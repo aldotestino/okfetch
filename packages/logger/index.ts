@@ -1,10 +1,10 @@
 import type { Plugin } from "@kanonic/fetch";
 import pino from "pino";
 
-interface LoggerOptions {
+type LoggerOptions = {
   pinoOptions: pino.LoggerOptions;
   logDataOnSuccess?: boolean;
-}
+};
 
 export const logger = (options: LoggerOptions) => {
   const pinoLogger = pino(options.pinoOptions);

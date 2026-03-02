@@ -38,7 +38,7 @@ import type {
  * });
  * ```
  */
-export interface RetryOptions<E = unknown> {
+export type RetryOptions<E = unknown> = {
   /** Number of retries (not counting the initial attempt). Total calls = times + 1. */
   times: number;
   /** Base delay in milliseconds between retries. */
@@ -50,7 +50,7 @@ export interface RetryOptions<E = unknown> {
    * Defaults to always retry.
    */
   shouldRetry?: (error: FetchError | ApiError<E>) => boolean;
-}
+};
 
 /**
  * A subset of RequestInit that can be supplied at the global, endpoint, or
@@ -74,7 +74,7 @@ export type RequestOptions<E = unknown> = Omit<
 export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 // Base endpoint properties shared by all methods
-export interface BaseEndpoint {
+export type BaseEndpoint = {
   path: `/${string}`;
   query?: z.ZodType;
   params?: z.ZodType;
@@ -82,7 +82,7 @@ export interface BaseEndpoint {
   stream?: { enabled: boolean };
   /** Fetch options applied to every call of this endpoint (retry is ignored here). */
   requestOptions?: Omit<RequestOptions, "retry">;
-}
+};
 
 // GET endpoint (no input body)
 export type GetEndpoint = BaseEndpoint & {
@@ -120,9 +120,9 @@ export type Endpoint = GetEndpoint | NonGetEndpoint;
  * await api.users.list()
  * ```
  */
-export interface EndpointTree {
+export type EndpointTree = {
   [key: string]: Endpoint | EndpointTree;
-}
+};
 
 // Distinguishes a leaf Endpoint from a nested group at the type level.
 // An Endpoint always has a `method` property; a group never does.
@@ -236,14 +236,14 @@ export type Auth =
  * Hooks receive this object by reference and may mutate it; each plugin in the
  * chain sees the version produced by the previous plugin.
  */
-export interface RequestContext {
+export type RequestContext = {
   url: string;
   method: string;
   headers: Record<string, string>;
   body: string | undefined;
   /** Any additional RequestInit fields (signal, credentials, mode, …). */
   [key: string]: unknown;
-}
+};
 
 /**
  * A plugin that hooks into the kanonic request lifecycle.
@@ -268,7 +268,7 @@ export interface RequestContext {
  * };
  * ```
  */
-export interface Plugin<E = unknown> {
+export type Plugin<E = unknown> = {
   /** Unique identifier for this plugin instance. */
   id: string;
   /** Human-readable display name. */
@@ -324,4 +324,4 @@ export interface Plugin<E = unknown> {
       error: FetchError | ApiError<E>
     ) => Promise<void>;
   };
-}
+};
