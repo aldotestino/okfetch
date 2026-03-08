@@ -25,3 +25,9 @@ export class ApiError<T = unknown> extends TaggedError("ApiError")<{
 }>() {
   declare readonly data: T | undefined;
 }
+
+export class TimeoutError extends TaggedError("TimeoutError")<{
+  readonly timout: number;
+  readonly message: string;
+  readonly cause?: unknown;
+}>() {}
