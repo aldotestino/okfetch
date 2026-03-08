@@ -18,8 +18,10 @@ type Auth = BasicAuth | BearerAuth;
 export type KanonicOptions = Prettify<
   Omit<RequestInit, "body" | "headers"> & {
     headers?: Record<string, string>;
-    auth: Auth;
+    auth?: Auth;
     outputSchema?: ZodType;
     errorSchema?: ZodType;
+    apiErrorDataSchema?: ZodType;
+    timeout?: number;
   }
 >;
