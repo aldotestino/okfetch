@@ -1,6 +1,8 @@
 // oxlint-disable max-statements
+// oxlint-disable complexity
 import { Result } from "better-result";
-import type { z, ZodType } from "zod/v4";
+import type { ZodType } from "zod/v4";
+import { z } from "zod/v4";
 
 import {
   ApiError,
@@ -9,16 +11,65 @@ import {
   TimeoutError,
   ValidationError,
 } from "./errors";
-import type { KanonicOptions } from "./types";
+import type {
+  KanonicError,
+  KanonicOptions,
+  RetryableKanonicError,
+} from "./types";
+
+export type { KanonicError };
 
 const nonBodyMethods = new Set(["HEAD", "OPTIONS"]);
 
-type KanonicError<TErr> =
-  | FetchError
-  | ApiError<TErr>
-  | ParseError
-  | ValidationError
-  | TimeoutError;
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const computeRetryDelay = (
+  options: KanonicOptions,
+  attempt: number
+): number => {
+  const { retry } = options;
+  if (!retry) {
+    return 0;
+  }
+
+  if (retry.strategy === "fixed") {
+    return retry.delay ?? 0;
+  }
+
+  if (retry.strategy === "linear") {
+    const raw = (retry.initialDelay ?? 100) + (retry.step ?? 100) * attempt;
+    return retry.maxDelay === undefined ? raw : Math.min(raw, retry.maxDelay);
+  }
+
+  // exponential
+  const raw = (retry.initialDelay ?? 100) * (retry.factor ?? 2) ** attempt;
+  return retry.maxDelay === undefined ? raw : Math.min(raw, retry.maxDelay);
+};
+
+const isRetryableByDefault = (error: RetryableKanonicError): boolean =>
+  error._tag === "FetchError" ||
+  error._tag === "TimeoutError" ||
+  (error._tag === "ApiError" && error.statusCode >= 500);
+
+const shouldRetryError = (
+  error: RetryableKanonicError,
+  options: KanonicOptions
+): boolean => {
+  const { retry } = options;
+  if (!retry) {
+    return false;
+  }
+
+  const attempt = options._retryAttempt ?? 0;
+  if (attempt >= retry.attempts) {
+    return false;
+  }
+
+  return retry.shouldRetry
+    ? retry.shouldRetry(error)
+    : isRetryableByDefault(error);
+};
 
 export const kanonic = async <
   TRes extends Options["outputSchema"] extends ZodType
@@ -154,7 +205,19 @@ export const kanonic = async <
     }
 
     if (responseResult.isErr()) {
-      return Result.err(responseResult.error);
+      const { error } = responseResult;
+      if (shouldRetryError(error, options)) {
+        const attempt = options._retryAttempt ?? 0;
+        const delay = computeRetryDelay(options, attempt);
+        if (delay > 0) {
+          await sleep(delay);
+        }
+        return (await kanonic(url, {
+          ...(options as KanonicOptions),
+          _retryAttempt: attempt + 1,
+        })) as Result<TRes, KanonicError<TErr>>;
+      }
+      return Result.err(error);
     }
 
     const response = responseResult.value;
@@ -174,6 +237,8 @@ export const kanonic = async <
       // try to parse the body as JSON to extract error details, but ignore parsing errors.
       const apiErrorData = Result.try(() => JSON.parse(text)).unwrapOr({});
 
+      let apiError: ApiError<TErr>;
+
       if (options.apiErrorDataSchema) {
         const {
           success,
@@ -191,23 +256,33 @@ export const kanonic = async <
           );
         }
 
-        return Result.err(
-          new ApiError<TErr>({
-            statusCode: response.status,
-            statusText: response.statusText,
-            text,
-            data: parsedApiErrorData as TErr,
-          })
-        );
-      }
-
-      return Result.err(
-        new ApiError<TErr>({
+        apiError = new ApiError<TErr>({
           statusCode: response.status,
           statusText: response.statusText,
           text,
-        })
-      );
+          data: parsedApiErrorData as TErr,
+        });
+      } else {
+        apiError = new ApiError<TErr>({
+          statusCode: response.status,
+          statusText: response.statusText,
+          text,
+        });
+      }
+
+      if (shouldRetryError(apiError, options)) {
+        const attempt = options._retryAttempt ?? 0;
+        const delay = computeRetryDelay(options, attempt);
+        if (delay > 0) {
+          await sleep(delay);
+        }
+        return (await kanonic(url, {
+          ...(options as KanonicOptions),
+          _retryAttempt: attempt + 1,
+        })) as Result<TRes, KanonicError<TErr>>;
+      }
+
+      return Result.err(apiError);
     }
 
     const data = yield* Result.try({
@@ -244,18 +319,21 @@ export const kanonic = async <
 
 // oxlint-disable-next-line unicorn/no-await-expression-member
 const _todoId = (
-  await kanonic<{ id: number }, { message: string }>(
-    "https://jsonplaceholder.typicode.co/todos/2",
-    {
-      // outputSchema: z.object({
-      //   id: z.number(),
-      // }),
-      // apiErrorDataSchema: z.object({
-      //   message: z.string(),
-      // }),
-      timeout: 1,
-    }
-  )
+  await kanonic("https://jsonplaceholder.typicode.com/todos/2", {
+    outputSchema: z.object({
+      id: z.number(),
+    }),
+    apiErrorDataSchema: z.object({
+      message: z.string(),
+    }),
+    timeout: 10,
+    retry: {
+      strategy: "fixed",
+      attempts: 10,
+      delay: 1000,
+      // shouldRetry: (error) => // ApiError's data not typed as {message: string},
+    },
+  })
 ).match({
   ok: (data) => data.id,
   err: (error) => {
