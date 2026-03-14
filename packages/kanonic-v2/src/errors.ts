@@ -31,3 +31,10 @@ export class TimeoutError extends TaggedError("TimeoutError")<{
   readonly message: string;
   readonly cause?: unknown;
 }>() {}
+
+export class PluginError extends TaggedError("PluginError")<{
+  readonly pluginName: string;
+  readonly hook: "init" | "onRequest" | "onResponse";
+  readonly message: string;
+  readonly cause?: unknown;
+}>() {}

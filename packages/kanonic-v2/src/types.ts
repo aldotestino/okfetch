@@ -4,6 +4,7 @@ import type {
   ApiError,
   FetchError,
   ParseError,
+  PluginError,
   TimeoutError,
   ValidationError,
 } from "./errors";
@@ -13,6 +14,7 @@ export type KanonicError<TErr> =
   | FetchError
   | ApiError<TErr>
   | ParseError
+  | PluginError
   | ValidationError
   | TimeoutError;
 
@@ -99,6 +101,94 @@ export type RetryOptions =
   | LinearRetryOptions
   | ExponentialRetryOptions;
 
+export type KanonicBody =
+  | string
+  | FormData
+  | URLSearchParams
+  | Blob
+  | ArrayBuffer
+  | ArrayBufferView
+  | ReadableStream<Uint8Array>
+  | null;
+
+export type KanonicPluginInitInput = {
+  url: string;
+  options: KanonicOptions;
+};
+
+export type KanonicRequestContext = Prettify<
+  Omit<RequestInit, "body" | "headers" | "method" | "signal"> & {
+    url: URL;
+    method: Method | Uppercase<string>;
+    headers: Headers;
+    body?: KanonicBody;
+    signal: AbortSignal;
+  }
+>;
+
+export type KanonicPluginHooks<TData = unknown, TErr = unknown> = {
+  onRequest?:
+    | ((context: KanonicRequestContext) => KanonicRequestContext | undefined)
+    | ((
+        context: KanonicRequestContext
+      ) => Promise<KanonicRequestContext | undefined>);
+  onResponse?:
+    | ((
+        context: KanonicRequestContext,
+        response: Response
+      ) => Response | undefined)
+    | ((
+        context: KanonicRequestContext,
+        response: Response
+      ) => Promise<Response | undefined>);
+  onSuccess?:
+    | ((
+        context: KanonicRequestContext,
+        response: Response,
+        data: TData
+      ) => void)
+    | ((
+        context: KanonicRequestContext,
+        response: Response,
+        data: TData
+      ) => Promise<void>);
+  onFail?:
+    | ((
+        context: KanonicRequestContext,
+        response: Response | undefined,
+        error: KanonicError<TErr>
+      ) => void)
+    | ((
+        context: KanonicRequestContext,
+        response: Response | undefined,
+        error: KanonicError<TErr>
+      ) => Promise<void>);
+  onRetry?:
+    | ((
+        context: KanonicRequestContext,
+        response: Response | undefined,
+        error: RetryableKanonicError,
+        attempt: number
+      ) => void)
+    | ((
+        context: KanonicRequestContext,
+        response: Response | undefined,
+        error: RetryableKanonicError,
+        attempt: number
+      ) => Promise<void>);
+};
+
+export type KanonicPlugin<TData = unknown, TErr = unknown> = {
+  name: string;
+  version: string;
+  init?:
+    | ((input: KanonicPluginInitInput) => KanonicPluginInitInput | undefined)
+    | ((
+        input: KanonicPluginInitInput
+      ) => Promise<KanonicPluginInitInput | undefined>);
+  hooks?: KanonicPluginHooks<TData, TErr>;
+};
+
 export type KanonicOptions = Prettify<
   Omit<RequestInit, "body" | "headers"> & {
     method?: Method;
@@ -113,10 +203,10 @@ export type KanonicOptions = Prettify<
       string,
       string | number | boolean | Array<string | number | boolean>
     >;
-    // oxlint-disable-next-line typescript/no-explicit-any
-    body?: any;
+    body?: unknown;
     timeout?: number;
     asStream?: boolean;
+    plugins?: KanonicPlugin[];
     /** Retry configuration. Supports "fixed", "linear" and "exponential" backoff strategies. */
     retry?: RetryOptions;
     /** @internal */
