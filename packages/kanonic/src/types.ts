@@ -207,7 +207,7 @@ export type KanonicOptions = Prettify<
     params?: Record<string, string | number | boolean>;
     query?: Record<
       string,
-      string | number | boolean | Array<string | number | boolean>
+      string | number | boolean | (string | number | boolean)[]
     >;
     body?: unknown;
     fetch?: KanonicFetch;
