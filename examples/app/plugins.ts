@@ -1,11 +1,5 @@
 // plugins.ts
-// Example plugins demonstrating the kanonic plugin system.
-//
-// Two built-in example plugins are provided:
-//   loggerPlugin  — logs every lifecycle event to the console (pure side-effects)
-//   timingPlugin  — measures and reports end-to-end request duration
-
-import type { Plugin, RequestContext } from "@kanonic/fetch";
+import type { KanonicPlugin } from "@kanonic/fetch";
 
 // ─── Logger plugin ────────────────────────────────────────────────────────────
 
@@ -13,9 +7,8 @@ import type { Plugin, RequestContext } from "@kanonic/fetch";
  * A logger plugin that prints every lifecycle event to the console.
  * Has no `init` function — it only observes, never modifies.
  */
-export const loggerPlugin: Plugin = {
-  id: "logger",
-  name: "Logger",
+export const loggerPlugin: KanonicPlugin = {
+  name: "logger",
   version: "1.0.0",
   hooks: {
     async onRequest(ctx) {
@@ -31,77 +24,85 @@ export const loggerPlugin: Plugin = {
     async onSuccess(_ctx, _response, data) {
       console.log("[logger] ✓ success:", JSON.stringify(data).slice(0, 120));
     },
-    async onError(_ctx, error) {
+    async onFail(_ctx, _response, error) {
       console.error(`[logger] ✗ error [${error._tag}]:`, error.message);
     },
-    async onRetry(ctx, error) {
+    async onRetry(ctx, _response, error, attempt) {
       console.warn(
-        `[logger] ↺ retrying ${ctx.method} ${ctx.url} after [${error._tag}]:`,
+        `[logger] ↺ retry ${attempt + 1} for ${ctx.method} ${ctx.url} after [${error._tag}]:`,
         error.message
       );
     },
   },
 };
+const totalTimings = new Map<string, number>();
+const attemptTimings = new Map<string, number>();
+const timingHeader = "x-kanonic-timing-id";
 
-// ─── Timing plugin ────────────────────────────────────────────────────────────
+const resolveTimingId = (value: string | null): string | null =>
+  typeof value === "string" && value.length > 0 ? value : null;
 
-// Stores per-request start timestamps keyed by a request ID we inject into ctx.
-const timings = new Map<string, number>();
-
-const logTotal = (ctx: RequestContext, symbol: string) => {
-  const requestId = ctx._timingRequestId as string | undefined;
-  if (!requestId) {
+const finishTiming = (id: string | null, symbol: string) => {
+  if (!id) {
     return;
   }
-  const start = timings.get(requestId);
-  if (start === undefined) {
+
+  const startedAt = totalTimings.get(id);
+  if (startedAt === undefined) {
     return;
   }
-  const totalMs = (performance.now() - start).toFixed(1);
-  timings.delete(requestId);
-  console.log(
-    `[timing] ${symbol} total ${totalMs}ms for ${ctx.method} ${ctx.url}`
-  );
+
+  totalTimings.delete(id);
+  attemptTimings.delete(id);
+  const totalMs = (performance.now() - startedAt).toFixed(1);
+  console.log(`[timing] ${symbol} total ${totalMs}ms`);
 };
 
-/**
- * A timing plugin that measures the wall-clock time of each attempt and logs
- * the total duration once the request settles.
- *
- * Uses `init` to stamp the request context with a unique `requestId` so that
- * `onSuccess`/`onError` hooks can locate the start timestamp.
- */
-export const timingPlugin: Plugin = {
-  id: "timing",
-  name: "Timing",
+export const timingPlugin: KanonicPlugin = {
+  name: "timing",
   version: "1.0.0",
-  async init(url, options) {
+  async init({ options, url }) {
     const requestId = crypto.randomUUID();
-    timings.set(requestId, performance.now());
-    // Attach the id as a non-standard field; downstream hooks read it via
-    // the RequestContext index signature.
-    return { url, options: { ...options, _timingRequestId: requestId } };
+    totalTimings.set(requestId, performance.now());
+
+    return {
+      url,
+      options: {
+        ...options,
+        headers: {
+          ...options.headers,
+          [timingHeader]: requestId,
+        },
+      },
+    };
   },
   hooks: {
     async onRequest(ctx) {
-      // Per-attempt timer for individual retry latency
-      return { ...ctx, _attemptStart: performance.now() };
+      const requestId = resolveTimingId(ctx.headers.get(timingHeader));
+      if (requestId) {
+        attemptTimings.set(requestId, performance.now());
+      }
+      return ctx;
     },
     async onResponse(ctx, response) {
-      const attemptStart = ctx._attemptStart as number | undefined;
+      const requestId = resolveTimingId(ctx.headers.get(timingHeader));
+      const attemptStart = requestId
+        ? attemptTimings.get(requestId)
+        : undefined;
       if (attemptStart !== undefined) {
-        const ms = (performance.now() - attemptStart).toFixed(1);
+        attemptTimings.delete(requestId as string);
+        const attemptMs = (performance.now() - attemptStart).toFixed(1);
         console.log(
-          `[timing] attempt took ${ms}ms → ${response.status} ${ctx.method} ${ctx.url}`
+          `[timing] attempt ${attemptMs}ms → ${response.status} ${ctx.method} ${ctx.url}`
         );
       }
       return response;
     },
     async onSuccess(ctx) {
-      logTotal(ctx, "✓");
+      finishTiming(resolveTimingId(ctx.headers.get(timingHeader)), "✓");
     },
-    async onError(ctx) {
-      logTotal(ctx, "✗");
+    async onFail(ctx) {
+      finishTiming(resolveTimingId(ctx.headers.get(timingHeader)), "✗");
     },
   },
 };

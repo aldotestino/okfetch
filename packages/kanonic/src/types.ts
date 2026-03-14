@@ -1,327 +1,224 @@
-import type { Result } from "better-result";
-import type { z } from "zod";
+import type { infer as Infer, ZodType } from "zod";
 
 import type {
   ApiError,
   FetchError,
-  InputValidationError,
-  OutputValidationError,
   ParseError,
+  PluginError,
+  TimeoutError,
+  ValidationError,
 } from "./errors";
+import type { Prettify } from "./type-utils";
 
-/**
- * Retry configuration for a per-call request. Mirrors better-result's retry
- * API but scoped to kanonic's error types.
- *
- * `shouldRetry` receives either a `FetchError` (network failure) or an
- * `ApiError<E>` (server error response). Validation errors
- * (`InputValidationError`, `OutputValidationError`, `ParseError`) are never
- * retried regardless of this predicate.
- *
- * Delay math (delayMs = d, attempt is 0-indexed):
- *   constant:    d
- *   linear:      d * (attempt + 1)
- *   exponential: d * 2^attempt
- *
- * @example
- * ```ts
- * await api.getUser({ params: { id: 1 } }, {
- *   retry: {
- *     times: 3,
- *     delayMs: 100,
- *     backoff: "exponential",
- *     shouldRetry: (error) => {
- *       if (error._tag === "ApiError") return error.statusCode >= 500;
- *       return true; // always retry network errors
- *     },
- *   },
- * });
- * ```
- */
-export type RetryOptions<E = unknown> = {
-  /** Number of retries (not counting the initial attempt). Total calls = times + 1. */
-  times: number;
-  /** Base delay in milliseconds between retries. */
-  delayMs: number;
-  backoff: "linear" | "constant" | "exponential";
-  /**
-   * Optional predicate. Return `true` to retry, `false` to stop.
-   * Receives only retriable errors: `FetchError` or `ApiError<E>`.
-   * Defaults to always retry.
-   */
-  shouldRetry?: (error: FetchError | ApiError<E>) => boolean;
-};
-
-/**
- * A subset of RequestInit that can be supplied at the global, endpoint, or
- * per-call level. `body` and `method` are always controlled by kanonic and
- * therefore excluded.
- *
- * Headers from all three levels are merged, with per-call winning over
- * endpoint-level winning over global. `Content-Type: application/json` is
- * always applied last and cannot be overridden.
- *
- * `retry` is only meaningful at the per-call level; it is ignored on global
- * and endpoint-level `requestOptions`.
- */
-export type RequestOptions<E = unknown> = Omit<
-  RequestInit,
-  "body" | "method"
-> & {
-  retry?: RetryOptions<E>;
-};
-
-export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-
-// Base endpoint properties shared by all methods
-export type BaseEndpoint = {
-  path: `/${string}`;
-  query?: z.ZodType;
-  params?: z.ZodType;
-  output?: z.ZodType;
-  stream?: { enabled: boolean };
-  /** Fetch options applied to every call of this endpoint (retry is ignored here). */
-  requestOptions?: Omit<RequestOptions, "retry">;
-};
-
-// GET endpoint (no input body)
-export type GetEndpoint = BaseEndpoint & {
-  method: "GET";
-};
-
-// Non-GET endpoint (can have input body)
-export type NonGetEndpoint = BaseEndpoint & {
-  method: Exclude<Method, "GET">;
-  input?: z.ZodType;
-};
-
-export type Endpoint = GetEndpoint | NonGetEndpoint;
-
-/**
- * A recursive tree of endpoints. Leaves are `Endpoint` objects; nodes are
- * plain objects grouping related endpoints.
- *
- * @example
- * ```ts
- * const endpoints = createEndpoints({
- *   todos: {
- *     list:   { method: "GET",  path: "/todos",    output: todoSchema },
- *     create: { method: "POST", path: "/todos",    input: newTodoSchema, output: todoSchema },
- *     get:    { method: "GET",  path: "/todos/:id", params: z.object({ id: z.number() }), output: todoSchema },
- *   },
- *   users: {
- *     list: { method: "GET", path: "/users", output: z.array(userSchema) },
- *   },
- * });
- *
- * // Usage:
- * await api.todos.list()
- * await api.todos.create({ input: { title: "Buy milk" } })
- * await api.users.list()
- * ```
- */
-export type EndpointTree = {
-  [key: string]: Endpoint | EndpointTree;
-};
-
-// Distinguishes a leaf Endpoint from a nested group at the type level.
-// An Endpoint always has a `method` property; a group never does.
-export type IsEndpoint<T> = T extends { method: Method } ? true : false;
-
-// All possible API errors
-export type ApiErrors<E = unknown> =
+export type KanonicError<TErr> =
   | FetchError
-  | ApiError<E>
+  | ApiError<TErr>
   | ParseError
-  | OutputValidationError
-  | InputValidationError;
+  | PluginError
+  | ValidationError
+  | TimeoutError;
 
-// Build the options object type for an endpoint
-export type EndpointOptions<E extends Endpoint> = (E extends NonGetEndpoint
-  ? E["input"] extends z.ZodType
-    ? { input: z.infer<E["input"]> }
-    : {}
-  : {}) &
-  (E["params"] extends z.ZodType ? { params: z.infer<E["params"]> } : {}) &
-  (E["query"] extends z.ZodType ? { query: z.infer<E["query"]> } : {});
+export type RetryableKanonicError =
+  | FetchError
+  | ApiError<unknown>
+  | TimeoutError;
 
-// Determine the success return type based on output schema
-export type EndpointOutput<E extends Endpoint> = E["output"] extends z.ZodType
-  ? z.infer<E["output"]>
-  : unknown;
+type BasicAuth = {
+  type: "basic";
+  username: string;
+  password: string;
+};
 
-// Check if streaming is enabled
-export type IsStreamEnabled<E extends Endpoint> = E["stream"] extends {
-  enabled: true;
-}
-  ? true
-  : false;
+type BearerAuth = {
+  type: "bearer";
+  token: string;
+};
 
-// Determine stream element type based on output schema
-export type StreamElementType<E extends Endpoint> =
-  E["output"] extends z.ZodType ? z.infer<E["output"]> : string;
+type CustomAuth = {
+  type: "custom";
+  prefix: string;
+  value: string;
+};
 
-// Return type: ReadableStream<T> when streaming, otherwise the output type
-export type EndpointReturn<E extends Endpoint> =
-  IsStreamEnabled<E> extends true
-    ? ReadableStream<StreamElementType<E>>
-    : EndpointOutput<E>;
+export type Auth = BasicAuth | BearerAuth | CustomAuth;
 
-export type ResultPromise<E extends Endpoint, ErrType> = Promise<
-  Result<EndpointReturn<E>, ApiErrors<ErrType>>
+export type NonBodyMethods = "HEAD" | "OPTIONS";
+export type BodyMethods = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+export type Method = BodyMethods | NonBodyMethods;
+
+type FixedRetryOptions = {
+  strategy: "fixed";
+  /** Maximum number of retry attempts. */
+  attempts: number;
+  /** Delay in milliseconds between retries. Defaults to 0. */
+  delay?: number;
+  /**
+   * Optional callback to decide whether a given error should be retried.
+   * If not provided, FetchError, TimeoutError, and ApiError with status >= 500
+   * are retried by default.
+   */
+  shouldRetry?: (error: RetryableKanonicError) => boolean;
+};
+
+type LinearRetryOptions = {
+  strategy: "linear";
+  /** Maximum number of retry attempts. */
+  attempts: number;
+  /** Delay for the first retry in milliseconds. Defaults to 100. */
+  initialDelay?: number;
+  /** Amount added to the delay on each subsequent attempt in milliseconds. Defaults to 100. */
+  step?: number;
+  /** Maximum delay in milliseconds. No cap if omitted. */
+  maxDelay?: number;
+  /**
+   * Optional callback to decide whether a given error should be retried.
+   * If not provided, FetchError, TimeoutError, and ApiError with status >= 500
+   * are retried by default.
+   */
+  shouldRetry?: (error: RetryableKanonicError) => boolean;
+};
+
+type ExponentialRetryOptions = {
+  strategy: "exponential";
+  /** Maximum number of retry attempts. */
+  attempts: number;
+  /** Initial delay in milliseconds for the first retry. Defaults to 100. */
+  initialDelay?: number;
+  /** Multiplier applied to the delay on each subsequent attempt. Defaults to 2. */
+  factor?: number;
+  /** Maximum delay in milliseconds. No cap if omitted. */
+  maxDelay?: number;
+  /**
+   * Optional callback to decide whether a given error should be retried.
+   * If not provided, FetchError, TimeoutError, and ApiError with status >= 500
+   * are retried by default.
+   */
+  shouldRetry?: (error: RetryableKanonicError) => boolean;
+};
+
+export type RetryOptions =
+  | FixedRetryOptions
+  | LinearRetryOptions
+  | ExponentialRetryOptions;
+
+export type KanonicBody = Exclude<RequestInit["body"], undefined>;
+export type KanonicFetch = (
+  input: string | URL | Request,
+  init?: RequestInit
+) => Promise<Response>;
+
+export type StreamChunkValue<Options extends KanonicOptions> =
+  Options["outputSchema"] extends ZodType
+    ? Infer<Options["outputSchema"]>
+    : unknown;
+
+export type KanonicSuccess<
+  Options extends KanonicOptions,
+  TRes = StreamChunkValue<Options>,
+> = Options["stream"] extends true ? ReadableStream<TRes> : TRes;
+
+export type KanonicPluginInitInput = {
+  url: string;
+  options: KanonicOptions;
+};
+
+export type KanonicRequestContext = Prettify<
+  Omit<RequestInit, "body" | "headers" | "method" | "signal"> & {
+    url: URL;
+    method: Method | Uppercase<string>;
+    headers: Headers;
+    body?: KanonicBody;
+    signal: AbortSignal;
+  }
 >;
 
-/**
- * Function signature for an endpoint with no schema options (no input/params/query).
- * The single optional argument is per-call RequestOptions.
- *
- *   api.listUsers()
- *   api.listUsers({ signal: controller.signal })
- */
-export type ZeroOptionEndpointFunction<E extends Endpoint, ErrType> = (
-  requestOptions?: RequestOptions<ErrType>
-) => ResultPromise<E, ErrType>;
-
-/**
- * Function signature for an endpoint that requires schema options.
- * The second optional argument is per-call RequestOptions.
- *
- *   api.getUser({ params: { id: 1 } })
- *   api.getUser({ params: { id: 1 } }, { signal: controller.signal })
- */
-export type OptionEndpointFunction<E extends Endpoint, ErrType> = (
-  options: EndpointOptions<E>,
-  requestOptions?: RequestOptions<ErrType>
-) => ResultPromise<E, ErrType>;
-
-// The overload: zero-option endpoints take (requestOptions?) while
-// endpoints with options take (options, requestOptions?)
-export type EndpointFunction<
-  E extends Endpoint,
-  ErrType = unknown,
-> = keyof EndpointOptions<E> extends never
-  ? ZeroOptionEndpointFunction<E, ErrType>
-  : OptionEndpointFunction<E, ErrType>;
-
-/**
- * Recursively maps an EndpointTree to a client object:
- * - leaf Endpoint  → EndpointFunction
- * - nested group   → ApiClient (recursed)
- */
-export type ApiClient<T extends EndpointTree, E = unknown> = {
-  [K in keyof T]: IsEndpoint<T[K]> extends true
-    ? T[K] extends Endpoint
-      ? EndpointFunction<T[K], E>
-      : never
-    : T[K] extends EndpointTree
-      ? ApiClient<T[K], E>
-      : never;
+export type KanonicPluginHooks<TData = unknown, TErr = unknown> = {
+  onRequest?:
+    | ((context: KanonicRequestContext) => KanonicRequestContext | undefined)
+    | ((
+        context: KanonicRequestContext
+      ) => Promise<KanonicRequestContext | undefined>);
+  onResponse?:
+    | ((
+        context: KanonicRequestContext,
+        response: Response
+      ) => Response | undefined)
+    | ((
+        context: KanonicRequestContext,
+        response: Response
+      ) => Promise<Response | undefined>);
+  onSuccess?:
+    | ((
+        context: KanonicRequestContext,
+        response: Response,
+        data: TData
+      ) => void)
+    | ((
+        context: KanonicRequestContext,
+        response: Response,
+        data: TData
+      ) => Promise<void>);
+  onFail?:
+    | ((
+        context: KanonicRequestContext,
+        response: Response | undefined,
+        error: KanonicError<TErr>
+      ) => void)
+    | ((
+        context: KanonicRequestContext,
+        response: Response | undefined,
+        error: KanonicError<TErr>
+      ) => Promise<void>);
+  onRetry?:
+    | ((
+        context: KanonicRequestContext,
+        response: Response | undefined,
+        error: RetryableKanonicError,
+        attempt: number
+      ) => void)
+    | ((
+        context: KanonicRequestContext,
+        response: Response | undefined,
+        error: RetryableKanonicError,
+        attempt: number
+      ) => Promise<void>);
 };
 
-export type Auth =
-  | {
-      type: "bearer";
-      token: string;
-    }
-  | {
-      type: "basic";
-      username: string;
-      password: string;
-    };
-
-/**
- * The request context passed to plugin hooks. Contains everything that will
- * be forwarded to `fetch` after all option merging has been applied.
- *
- * Hooks receive this object by reference and may mutate it; each plugin in the
- * chain sees the version produced by the previous plugin.
- */
-export type RequestContext = {
-  url: string;
-  method: string;
-  headers: Record<string, string>;
-  body: string | undefined;
-  /** Any additional RequestInit fields (signal, credentials, mode, …). */
-  [key: string]: unknown;
-};
-
-/**
- * A plugin that hooks into the kanonic request lifecycle.
- *
- * Plugins are registered globally via `createApi({ plugins: [...] })` and
- * apply to every endpoint. They are applied in array order — each hook
- * receives the context as mutated by all previous plugins in the chain.
- *
- * @example
- * ```ts
- * // Logger plugin (side-effects only)
- * const logger: Plugin = {
- *   id: "logger",
- *   name: "Logger",
- *   version: "1.0.0",
- *   hooks: {
- *     onRequest:  async (ctx) => { console.log("→", ctx.method, ctx.url); return ctx; },
- *     onResponse: async (ctx, res) => { console.log("←", res.status); return res; },
- *     onSuccess:  async (ctx, res, data) => { console.log("✓", res.status, data); },
- *     onError:    async (ctx, err) => { console.error("✗", err._tag); },
- *   },
- * };
- * ```
- */
-export type Plugin<E = unknown> = {
-  /** Unique identifier for this plugin instance. */
-  id: string;
-  /** Human-readable display name. */
+export type KanonicPlugin<TData = unknown, TErr = unknown> = {
   name: string;
-  /** Semver string, e.g. `"1.0.0"`. */
   version: string;
-  /**
-   * Called once per endpoint invocation, **before** the first attempt.
-   * Receives the fully-resolved URL and the merged `RequestInit` options.
-   * May return a modified `{ url, options }` — useful for adding trace IDs,
-   * signing requests, or rewriting URLs.
-   *
-   * Runs even when `retry` is configured; it is NOT re-run on each retry.
-   */
-  init?: (
-    url: string,
-    options: RequestInit
-  ) => Promise<{ url: string; options: RequestInit }>;
-  hooks?: {
-    /**
-     * Fires at the start of **each attempt** (including retries), after `init`.
-     * Receives the current `RequestContext` and must return it (optionally
-     * mutated). Mutations are visible to all subsequent plugins and to `fetch`.
-     */
-    onRequest?: (ctx: RequestContext) => Promise<RequestContext>;
-    /**
-     * Fires after every `fetch` response, on **each attempt**.
-     * Receives the `RequestContext` (as produced by `onRequest`) and the raw
-     * `Response`. Must return a `Response` — can be the same object or a
-     * cloned/replaced one.
-     */
-    onResponse?: (ctx: RequestContext, response: Response) => Promise<Response>;
-    /**
-     * Fires **once**, after the entire retry loop resolves successfully.
-     * Cannot modify the data. Intended for logging, metrics, tracing, etc.
-     */
-    onSuccess?: (
-      ctx: RequestContext,
-      response: Response,
-      data: unknown
-    ) => Promise<void>;
-    /**
-     * Fires **once**, after the entire retry loop resolves with an error.
-     * Cannot modify the error. Intended for logging, metrics, tracing, etc.
-     */
-    onError?: (ctx: RequestContext, error: ApiErrors<E>) => Promise<void>;
-    /**
-     * Fires inside the retry loop, just before the sleep delay, when an
-     * attempt fails and will be retried. Cannot modify anything.
-     */
-    onRetry?: (
-      ctx: RequestContext,
-      error: FetchError | ApiError<E>
-    ) => Promise<void>;
-  };
+  init?:
+    | ((input: KanonicPluginInitInput) => KanonicPluginInitInput | undefined)
+    | ((
+        input: KanonicPluginInitInput
+      ) => Promise<KanonicPluginInitInput | undefined>);
+  hooks?: KanonicPluginHooks<TData, TErr>;
 };
+
+export type KanonicOptions = Prettify<
+  Omit<RequestInit, "body" | "headers"> & {
+    method?: Method;
+    headers?: Record<string, string>;
+    auth?: Auth;
+    outputSchema?: ZodType;
+    errorSchema?: ZodType;
+    apiErrorDataSchema?: ZodType;
+    baseURL?: string;
+    params?: Record<string, string | number | boolean>;
+    query?: Record<
+      string,
+      string | number | boolean | Array<string | number | boolean>
+    >;
+    body?: unknown;
+    fetch?: KanonicFetch;
+    timeout?: number;
+    stream?: boolean;
+    validateOutput?: boolean;
+    shouldValidateError?: (statusCode: number) => boolean;
+    plugins?: KanonicPlugin[];
+    /** Retry configuration. Supports "fixed", "linear" and "exponential" backoff strategies. */
+    retry?: RetryOptions;
+    /** @internal */
+    _retryAttempt?: number;
+  }
+>;

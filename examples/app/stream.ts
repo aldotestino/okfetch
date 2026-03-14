@@ -1,17 +1,9 @@
-// stream.ts
-// Demonstrates SSE streaming with:
-//   - a typed output schema (each chunk validated against it)
-//   - for-await-of iteration over the ReadableStream
-//   - error handling before the stream opens
-//
-// Run: bun run stream.ts
-
 import { createApi } from "@kanonic/fetch";
 
 import { endpoints } from "./endpoints";
 
 const api = createApi({
-  baseUrl: "https://sse.dev",
+  baseURL: "https://sse.dev",
   endpoints,
 });
 

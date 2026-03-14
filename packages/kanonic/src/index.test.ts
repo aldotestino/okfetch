@@ -1,47 +1,33 @@
 // oxlint-disable jest/no-conditional-in-test
-import { afterAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
-import { z } from "zod";
+import type { Result } from "better-result";
+import { z } from "zod/v4";
 
-import {
-  ApiError,
-  FetchError,
-  InputValidationError,
-  OutputValidationError,
-  ParseError,
-} from "./errors";
-import type { RetryOptions } from "./index";
-import {
-  ApiService,
-  createApi,
-  createEndpoints,
-  validateAllErrors,
-  validateClientErrors,
+import { ValidationError } from "./errors";
+import type {
+  KanonicError,
+  KanonicFetch,
+  KanonicPlugin,
+  KanonicPluginInitInput,
 } from "./index";
+import { kanonic } from "./index";
 
-// Create a mock HTTP server for testing
-export const createMockServer = (
-  handler: (req: Request) => Response | Promise<Response>
-) => {
-  const server = Bun.serve({
-    fetch: handler,
-    port: 0, // Random available port
-  });
-
-  // Auto-cleanup after all tests
-  afterAll(() => {
-    server.stop();
-  });
-
-  return {
-    server,
-    stop: () => server.stop(),
-    url: `http://localhost:${server.port}`,
+const createMockFetch =
+  (handler: (request: Request) => Response | Promise<Response>): KanonicFetch =>
+  async (input: string | URL | Request, init?: RequestInit) => {
+    const request =
+      input instanceof Request ? input : new Request(String(input), init);
+    return handler(request);
   };
-};
 
-// Create an SSE-formatted ReadableStream for testing
-export const createSSEStream = (chunks: (string | object)[]) => {
+const createRejectingFetch =
+  (message: string): KanonicFetch =>
+  async () => {
+    throw new TypeError(message);
+  };
+
+const createSSEStream = (chunks: (string | object)[]) => {
   const encoder = new TextEncoder();
 
   return new ReadableStream({
@@ -55,8 +41,7 @@ export const createSSEStream = (chunks: (string | object)[]) => {
   });
 };
 
-// Collect all chunks from a ReadableStream
-export const collectStreamChunks = async <T>(
+const collectStreamChunks = async <T>(
   stream: ReadableStream<T>
 ): Promise<T[]> => {
   const chunks: T[] = [];
@@ -77,2626 +62,571 @@ export const collectStreamChunks = async <T>(
   return chunks;
 };
 
-// Basic API Client Tests (5 tests)
-describe("Basic API Client", () => {
-  test("should create API client", () => {
-    const endpoints = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number(), title: z.string() }),
-        path: "/todos/:id",
-      },
-    });
-
-    const api = createApi({
-      baseUrl: "https://api.example.com",
-      endpoints,
-    });
-
-    expect(api).toBeDefined();
-    expect(api.getTodo).toBeDefined();
-    expect(typeof api.getTodo).toBe("function");
-  });
-
-  test("should make GET request", async () => {
-    const { url } = createMockServer(() =>
-      Response.json({ id: 1, title: "Test" })
-    );
-
-    const endpoints = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number(), title: z.string() }),
-        path: "/todos/1",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.getTodo();
-
-    expect(result.isOk()).toBe(true);
-
-    const value = result.unwrap();
-    expect(value.id).toBe(1);
-    expect(value.title).toBe("Test");
-  });
-});
-
-describe("Authentication", () => {
-  test("should add Bearer token header", async () => {
-    let authHeader: string | null = "";
-
-    const { url } = createMockServer((req) => {
-      authHeader = req.headers.get("Authorization");
-      return Response.json({ success: true });
-    });
-
-    const endpoints = createEndpoints({
-      getProfile: {
-        method: "GET",
-        output: z.object({ success: z.boolean() }),
-        path: "/profile",
-      },
-    });
-
-    const api = createApi({
-      auth: { token: "test-token-123", type: "bearer" },
-      baseUrl: url,
-      endpoints,
-    });
-
-    await api.getProfile();
-    expect(authHeader).toBe("Bearer test-token-123");
-  });
-
-  test("should add Basic auth header", async () => {
-    let authHeader: string | null = "";
-
-    const { url } = createMockServer((req) => {
-      authHeader = req.headers.get("Authorization");
-      return Response.json({ success: true });
-    });
-
-    const endpoints = createEndpoints({
-      getProfile: {
-        method: "GET",
-        output: z.object({ success: z.boolean() }),
-        path: "/profile",
-      },
-    });
-
-    const api = createApi({
-      auth: { password: "pass", type: "basic", username: "user" },
-      baseUrl: url,
-      endpoints,
-    });
-
-    await api.getProfile();
-    expect(authHeader).toBe(`Basic ${btoa("user:pass")}`);
-  });
-});
-
-// Validation Tests (3 tests)
-describe("Validation", () => {
-  test("should validate input when enabled", async () => {
-    const { url } = createMockServer(() =>
-      Response.json({ id: 1, title: "Test" })
-    );
-
-    const endpoints = createEndpoints({
-      createTodo: {
-        input: z.object({ title: z.string() }),
-        method: "POST",
-        output: z.object({ id: z.number(), title: z.string() }),
-        path: "/todos",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints, validateInput: true });
-
-    // Valid input should work
-    const validResult = await api.createTodo({ input: { title: "Test" } });
-    expect(validResult.isOk()).toBe(true);
-
-    // Invalid input should fail
-    const invalidResult = await api.createTodo({
-      input: { title: 123 } as unknown as { title: string },
-    });
-    expect(invalidResult.isErr()).toBe(true);
-
-    if (invalidResult.isErr()) {
-      expect(invalidResult.error._tag).toBe("InputValidationError");
-    }
-  });
-
-  test("should validate output when enabled", async () => {
-    const { url } = createMockServer(() =>
-      Response.json({ id: "invalid", title: "Test" })
-    );
-
-    const endpoints = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number(), title: z.string() }),
-        path: "/todos/1",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints, validateOutput: true });
-    const result = await api.getTodo();
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("OutputValidationError");
-    }
-  });
-
-  test("should skip validation when disabled", async () => {
-    const { url } = createMockServer(() =>
-      Response.json({ id: "invalid", title: "Test" })
-    );
-
-    const endpoints = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number(), title: z.string() }),
-        path: "/todos/1",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints, validateOutput: false });
-    const result = await api.getTodo();
-
-    expect(result.isOk()).toBe(true);
-    expect((result.unwrap() as unknown as { id: string }).id).toBe("invalid");
-  });
-});
-
-// Error Handling Tests (3 tests)
-describe("Error Handling", () => {
-  test("should return ApiError on 4xx/5xx", async () => {
-    const { url } = createMockServer(
-      () => new Response("Not Found", { status: 404 })
-    );
-
-    const endpoints = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number() }),
-        path: "/todos/1",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.getTodo();
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("ApiError");
-      expect((result.error as ApiError).statusCode).toBe(404);
-    }
-  });
-
-  test("should return FetchError on network failure", async () => {
-    const endpoints = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number() }),
-        path: "/todos/1",
-      },
-    });
-
-    const api = createApi({
-      baseUrl: "http://localhost:1", // Invalid port
-      endpoints,
-    });
-
-    const result = await api.getTodo();
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("FetchError");
-    }
-  });
-
-  test("should return InputValidationError on invalid input", async () => {
-    const { url } = createMockServer(() => Response.json({ id: 1 }));
-
-    const endpoints = createEndpoints({
-      createTodo: {
-        input: z.object({ title: z.string().min(3) }),
-        method: "POST",
-        output: z.object({ id: z.number() }),
-        path: "/todos",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.createTodo({ input: { title: "ab" } });
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("InputValidationError");
-    }
-  });
-});
-
-// Streaming - Basic Tests (8 tests)
-describe("Streaming - Basic", () => {
-  test("should parse SSE format", async () => {
-    const { url } = createMockServer(() => {
-      const stream = createSSEStream(["hello", "world"]);
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toEqual(["hello", "world"]);
-  });
-
-  test("should return ReadableStream<string> without schema", async () => {
-    const { url } = createMockServer(() => {
-      const stream = createSSEStream(["test"]);
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-    const value = result.unwrap();
-
-    expect(value).toBeInstanceOf(ReadableStream);
-    const chunks = await collectStreamChunks(value);
-    expect(chunks[0]).toBe("test");
-    expect(typeof chunks[0]).toBe("string");
-  });
-
-  test("should handle multiple chunks", async () => {
-    const { url } = createMockServer(() => {
-      const stream = createSSEStream(["one", "two", "three", "four"]);
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toHaveLength(4);
-    expect(chunks).toEqual(["one", "two", "three", "four"]);
-  });
-
-  test("should skip empty data lines", async () => {
-    const { url } = createMockServer(() => {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode("data: hello\n\n"));
-          controller.enqueue(encoder.encode("data: \n\n")); // Empty
-          controller.enqueue(encoder.encode("data: world\n\n"));
-          controller.close();
-        },
-      });
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toEqual(["hello", "world"]);
-  });
-
-  test("should skip [DONE] markers", async () => {
-    const { url } = createMockServer(() => {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode("data: message1\n\n"));
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.enqueue(encoder.encode("data: message2\n\n"));
-          controller.close();
-        },
-      });
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toEqual(["message1", "message2"]);
-  });
-
-  test("should buffer incomplete lines", async () => {
-    const { url } = createMockServer(() => {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          // Send partial line
-          controller.enqueue(encoder.encode("data: hel"));
-          controller.enqueue(encoder.encode("lo\n\n"));
-          controller.close();
-        },
-      });
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toEqual(["hello"]);
-  });
-
-  test("should handle stream cancellation", async () => {
-    const { url } = createMockServer(() => {
-      const stream = createSSEStream(["one", "two", "three"]);
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const reader = result.unwrap().getReader();
-    const { value } = await reader.read();
-    expect(value).toBe("one");
-
-    // Cancel the stream
-    await reader.cancel();
-
-    // Stream should be done
-    const { done } = await reader.read();
-    expect(done).toBe(true);
-  });
-
-  test("should return ApiError before streaming on error", async () => {
-    const { url } = createMockServer(
-      () => new Response("Not Found", { status: 404 })
-    );
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("ApiError");
-      expect((result.error as ApiError).statusCode).toBe(404);
-    }
-  });
-});
-
-// Streaming - Typed with Schema Tests (10 tests)
-describe("Streaming - Typed with Schema", () => {
-  test("should return ReadableStream<T> with schema", async () => {
-    const { url } = createMockServer(() => {
-      const stream = createSSEStream([{ id: 1, msg: "hello" }]);
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        output: z.object({ id: z.number(), msg: z.string() }),
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toHaveLength(1);
-    expect(chunks[0]?.id).toBe(1);
-    expect(chunks[0]?.msg).toBe("hello");
-  });
-
-  test("should parse JSON chunks with object schema", async () => {
-    const { url } = createMockServer(() => {
-      const stream = createSSEStream([
-        { id: 1, text: "first" },
-        { id: 2, text: "second" },
-      ]);
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        output: z.object({ id: z.number(), text: z.string() }),
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]?.id).toBe(1);
-    expect(chunks[1]?.id).toBe(2);
-  });
-
-  test("should validate chunks when validateOutput=true", async () => {
-    const { url } = createMockServer(() => {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(
-            encoder.encode('data: {"id":1,"msg":"valid"}\n\n')
-          );
-          controller.enqueue(
-            encoder.encode('data: {"id":"invalid","msg":"bad"}\n\n')
-          );
-          controller.enqueue(
-            encoder.encode('data: {"id":2,"msg":"valid"}\n\n')
-          );
-          controller.close();
-        },
-      });
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        output: z.object({ id: z.number(), msg: z.string() }),
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints, validateOutput: true });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    // Invalid chunk should be skipped
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]?.id).toBe(1);
-    expect(chunks[1]?.id).toBe(2);
-  });
-
-  test("should skip validation when validateOutput=false", async () => {
-    const { url } = createMockServer(() => {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(
-            encoder.encode('data: {"id":"not-a-number","msg":"test"}\n\n')
-          );
-          controller.close();
-        },
-      });
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        output: z.object({ id: z.number(), msg: z.string() }),
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints, validateOutput: false });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toHaveLength(1);
-    // Should receive unvalidated data
-    expect((chunks[0] as { id: unknown }).id).toBe("not-a-number");
-  });
-
-  test("should skip invalid JSON chunks with warning", async () => {
-    const { url } = createMockServer(() => {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(
-            encoder.encode('data: {"id":1,"msg":"valid"}\n\n')
-          );
-          controller.enqueue(encoder.encode("data: {invalid json}\n\n"));
-          controller.enqueue(
-            encoder.encode('data: {"id":2,"msg":"valid"}\n\n')
-          );
-          controller.close();
-        },
-      });
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        output: z.object({ id: z.number(), msg: z.string() }),
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    // Invalid JSON chunk should be skipped
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]?.id).toBe(1);
-    expect(chunks[1]?.id).toBe(2);
-  });
-
-  test("should skip invalid validation chunks with warning", async () => {
-    const { url } = createMockServer(() => {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(
-            encoder.encode('data: {"id":1,"msg":"valid"}\n\n')
-          );
-          controller.enqueue(encoder.encode('data: {"id":2}\n\n')); // Missing msg
-          controller.enqueue(
-            encoder.encode('data: {"id":3,"msg":"valid"}\n\n')
-          );
-          controller.close();
-        },
-      });
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        output: z.object({ id: z.number(), msg: z.string() }),
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints, validateOutput: true });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    // Invalid chunk should be skipped
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]?.id).toBe(1);
-    expect(chunks[1]?.id).toBe(3);
-  });
-
-  test("should continue stream after invalid chunk", async () => {
-    const { url } = createMockServer(() => {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode('data: {"valid":true}\n\n'));
-          controller.enqueue(encoder.encode("data: invalid\n\n"));
-          controller.enqueue(encoder.encode('data: {"valid":true}\n\n'));
-          controller.enqueue(encoder.encode("data: {bad json\n\n"));
-          controller.enqueue(encoder.encode('data: {"valid":true}\n\n'));
-          controller.close();
-        },
-      });
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        output: z.object({ valid: z.boolean() }),
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    // Should get 3 valid chunks, 2 invalid skipped
-    expect(chunks).toHaveLength(3);
-    expect(chunks.every((c) => c?.valid === true)).toBe(true);
-  });
-
-  test("should handle z.string() schema", async () => {
-    const { url } = createMockServer(() => {
-      const stream = createSSEStream(['"hello"', '"world"']);
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        output: z.string(),
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toEqual(["hello", "world"]);
-  });
-
-  test("should handle z.number() schema", async () => {
-    const { url } = createMockServer(() => {
-      const stream = createSSEStream(["42", "100", "999"]);
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        output: z.number(),
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toEqual([42, 100, 999]);
-  });
-
-  test("should handle nested schemas", async () => {
-    const { url } = createMockServer(() => {
-      const stream = createSSEStream([
-        { timestamp: 123, user: { id: 1, name: "Alice" } },
-        { timestamp: 456, user: { id: 2, name: "Bob" } },
-      ]);
-      return new Response(stream);
-    });
-
-    const endpoints = createEndpoints({
-      stream: {
-        method: "GET",
-        output: z.object({
-          timestamp: z.number(),
-          user: z.object({ id: z.number(), name: z.string() }),
-        }),
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.stream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]?.user.name).toBe("Alice");
-    expect(chunks[1]?.user.name).toBe("Bob");
-  });
-});
-
-// Integration Tests (3 tests)
-describe("Integration", () => {
-  test("should combine validation and streaming", async () => {
-    const { url } = createMockServer(() => {
-      const stream = createSSEStream([
-        { id: 1, status: "ok" },
-        { id: 2, status: "ok" },
-      ]);
-      return new Response(stream, {
-        headers: { "content-type": "text/event-stream" },
-      });
-    });
-
-    const endpoints = createEndpoints({
-      processStream: {
-        method: "POST",
-        output: z.object({ id: z.number(), status: z.string() }),
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      validateOutput: true,
-    });
-
-    const result = await api.processStream();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]?.status).toBe("ok");
-  });
-
-  test("should handle concurrent API requests", async () => {
-    const { url } = createMockServer(() => Response.json({ id: 1 }));
-
-    const endpoints = createEndpoints({
-      getData: {
-        method: "GET",
-        output: z.object({ id: z.number() }),
-        path: "/data",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-
-    const results = await Promise.all([
-      api.getData(),
-      api.getData(),
-      api.getData(),
-    ]);
-
-    expect(results.every((r) => r.isOk())).toBe(true);
-    for (const r of results) {
-      expect(r.isOk()).toBe(true);
-    }
-  });
-
-  test("should handle realistic SSE stream", async () => {
-    const { url } = createMockServer(() => {
-      const stream = createSSEStream([
-        { data: "Initializing...", event: "start" },
-        { data: "Processing...", event: "progress" },
-        { data: "Done!", event: "complete" },
-      ]);
-      return new Response(stream, {
-        headers: { "content-type": "text/event-stream" },
-      });
-    });
-
-    const endpoints = createEndpoints({
-      process: {
-        method: "POST",
-        output: z.object({ data: z.string(), event: z.string() }),
-        path: "/process",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.process();
-
-    expect(result.isOk()).toBe(true);
-
-    const chunks = await collectStreamChunks(result.unwrap());
-    expect(chunks).toHaveLength(3);
-    expect(chunks[0]?.event).toBe("start");
-    expect(chunks[2]?.event).toBe("complete");
-  });
-});
-
-// Error Class Tests (6 tests)
-describe("Error Classes", () => {
-  test("ApiError should have statusCode and _tag", () => {
-    const error = new ApiError({ statusCode: 404, text: "Not Found" });
-    expect(error._tag).toBe("ApiError");
-    expect(error.statusCode).toBe(404);
-    expect(error.text).toBe("Not Found");
-    expect(error).toBeInstanceOf(Error);
-  });
-
-  test("FetchError should have message and _tag", () => {
-    const error = new FetchError({ message: "Network failure" });
-    expect(error._tag).toBe("FetchError");
-    expect(error.message).toBe("Network failure");
-    expect(error).toBeInstanceOf(Error);
-  });
-
-  test("ParseError should have message and _tag", () => {
-    const error = new ParseError({ message: "Invalid JSON" });
-    expect(error._tag).toBe("ParseError");
-    expect(error.message).toBe("Invalid JSON");
-    expect(error).toBeInstanceOf(Error);
-  });
-
-  test("InputValidationError should have zodError and _tag", () => {
-    const schema = z.object({ name: z.string() });
-    const validationResult = schema.safeParse({ name: 123 });
-    expect(validationResult.success).toBe(false);
-
-    if (!validationResult.success) {
-      const error = new InputValidationError({
-        message: "Input validation failed",
-        zodError: validationResult.error,
-      });
-      expect(error._tag).toBe("InputValidationError");
-      expect(error.zodError).toBeDefined();
-      expect(error).toBeInstanceOf(Error);
-    }
-  });
-
-  test("OutputValidationError should have zodError and _tag", () => {
-    const schema = z.object({ id: z.number() });
-    const validationResult = schema.safeParse({ id: "not-a-number" });
-    expect(validationResult.success).toBe(false);
-
-    if (!validationResult.success) {
-      const error = new OutputValidationError({
-        message: "Output validation failed",
-        zodError: validationResult.error,
-      });
-      expect(error._tag).toBe("OutputValidationError");
-      expect(error.zodError).toBeDefined();
-      expect(error).toBeInstanceOf(Error);
-    }
-  });
-
-  test("should discriminate errors by _tag field", () => {
-    const apiError = new ApiError({ statusCode: 500, text: "Server Error" });
-    const fetchError = new FetchError({ message: "Connection failed" });
-    const parseError = new ParseError({ message: "Parse error" });
-
-    const errors = [apiError, fetchError, parseError];
-
-    for (const error of errors) {
-      switch (error._tag) {
-        case "ApiError": {
-          expect(error.statusCode).toBeDefined();
-          break;
-        }
-        case "FetchError": {
-          expect(error.message).toBeDefined();
-          break;
-        }
-        default: {
-          expect(error.message).toBeDefined();
-          break;
-        }
-      }
-    }
-  });
-});
-
-// Error Schema Validation Tests
-describe("Error Schema Validation", () => {
-  const errorSchema = z.object({
-    code: z.string().optional(),
-    message: z.string(),
-  });
-
-  test("should parse and validate error response with schema", async () => {
-    const { url } = createMockServer(() =>
-      Response.json(
-        { code: "NOT_FOUND", message: "Resource not found" },
-        { status: 404 }
-      )
-    );
-
-    const endpoints = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number(), title: z.string() }),
-        path: "/todos/1",
-      },
-    });
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      errorSchema,
-      shouldValidateError: validateAllErrors,
-    });
-    const result = await api.getTodo();
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("ApiError");
-      const apiError = result.error as ApiError<{
-        code?: string;
-        message: string;
-      }>;
-      expect(apiError.statusCode).toBe(404);
-      expect(apiError.data).toBeDefined();
-      expect(apiError.data?.message).toBe("Resource not found");
-      expect(apiError.data?.code).toBe("NOT_FOUND");
-      expect(apiError.text).toContain("NOT_FOUND");
-    }
-  });
-
-  test("should fallback to text when error JSON parse fails", async () => {
-    const { url } = createMockServer(
-      () => new Response("Invalid JSON", { status: 500 })
-    );
-
-    const endpoints = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number(), title: z.string() }),
-        path: "/todos/1",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints, errorSchema });
-    const result = await api.getTodo();
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("ApiError");
-      const apiError = result.error as ApiError<unknown>;
-      expect(apiError.statusCode).toBe(500);
-      expect(apiError.data).toBeUndefined();
-      expect(apiError.text).toBe("Invalid JSON");
-    }
-  });
-
-  test("should fallback to text when error validation fails", async () => {
-    const { url } = createMockServer(() =>
-      Response.json(
-        { error: "Something went wrong", status: "error" },
-        { status: 400 }
-      )
-    );
-
-    const endpoints = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number(), title: z.string() }),
-        path: "/todos/1",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints, errorSchema });
-    const result = await api.getTodo();
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("ApiError");
-      const apiError = result.error as ApiError<unknown>;
-      expect(apiError.statusCode).toBe(400);
-      expect(apiError.data).toBeUndefined();
-      expect(apiError.text).toContain("Something went wrong");
-    }
-  });
-
-  test("should respect shouldValidateError function", async () => {
-    const { url } = createMockServer(() =>
-      Response.json(
-        { code: "INTERNAL_ERROR", message: "Server error" },
-        { status: 500 }
-      )
-    );
-
-    const endpoints = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number(), title: z.string() }),
-        path: "/todos/1",
-      },
-    });
-
-    // Only validate 4xx errors, not 5xx
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      errorSchema,
-      shouldValidateError: (statusCode) =>
-        statusCode >= 400 && statusCode < 500,
-    });
-    const result = await api.getTodo();
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("ApiError");
-      const apiError = result.error as ApiError<unknown>;
-      expect(apiError.statusCode).toBe(500);
-      // Should not validate 500 errors
-      expect(apiError.data).toBeUndefined();
-      expect(apiError.text).toContain("INTERNAL_ERROR");
-    }
-  });
-
-  test("should use default validation (no validation by default)", async () => {
-    // Test with 400 - should NOT validate by default
-    const { url: url400 } = createMockServer(() =>
-      Response.json(
-        { code: "BAD_REQUEST", message: "Invalid request" },
-        { status: 400 }
-      )
-    );
-
-    const endpoints400 = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number(), title: z.string() }),
-        path: "/todos/1",
-      },
-    });
-
-    const api400 = createApi({
-      baseUrl: url400,
-      endpoints: endpoints400,
-      errorSchema,
-    });
-    const result400 = await api400.getTodo();
-
-    expect(result400.isErr()).toBe(true);
-    if (result400.isErr()) {
-      const apiError = result400.error as ApiError<{
-        code?: string;
-        message: string;
-      }>;
-      expect(apiError.statusCode).toBe(400);
-      expect(apiError.data).toBeUndefined();
-      expect(apiError.text).toContain("BAD_REQUEST");
-    }
-
-    // Test with 500 - should NOT validate
-    const { url: url500 } = createMockServer(() =>
-      Response.json(
-        { code: "INTERNAL_ERROR", message: "Server error" },
-        { status: 500 }
-      )
-    );
-
-    const endpoints500 = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number(), title: z.string() }),
-        path: "/todos/1",
-      },
-    });
-
-    const api500 = createApi({
-      baseUrl: url500,
-      endpoints: endpoints500,
-      errorSchema,
-    });
-    const result500 = await api500.getTodo();
-
-    expect(result500.isErr()).toBe(true);
-    if (result500.isErr()) {
-      const apiError = result500.error as ApiError<unknown>;
-      expect(apiError.statusCode).toBe(500);
-      expect(apiError.data).toBeUndefined();
-    }
-  });
-
-  test("should work without error schema (backward compatibility)", async () => {
-    const { url } = createMockServer(() =>
-      Response.json({ error: "Not found" }, { status: 404 })
-    );
-
-    const endpoints = createEndpoints({
-      getTodo: {
-        method: "GET",
-        output: z.object({ id: z.number(), title: z.string() }),
-        path: "/todos/1",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.getTodo();
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("ApiError");
-      const apiError = result.error as ApiError<unknown>;
-      expect(apiError.statusCode).toBe(404);
-      expect(apiError.data).toBeUndefined();
-      expect(apiError.text).toContain("Not found");
-    }
-  });
-
-  test("should validate error in streaming endpoint", async () => {
-    const { url } = createMockServer(() =>
-      Response.json(
-        { code: "STREAM_ERROR", message: "Stream failed" },
-        { status: 400 }
-      )
-    );
-
-    const endpoints = createEndpoints({
-      streamData: {
-        method: "GET",
-        output: z.object({ data: z.string() }),
-        path: "/stream",
-        stream: { enabled: true },
-      },
-    });
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      errorSchema,
-      shouldValidateError: validateClientErrors,
-    });
-    const result = await api.streamData();
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("ApiError");
-      const apiError = result.error as ApiError<{
-        code?: string;
-        message: string;
-      }>;
-      expect(apiError.statusCode).toBe(400);
-      expect(apiError.data).toBeDefined();
-      expect(apiError.data?.message).toBe("Stream failed");
-    }
-  });
-
-  test("should work with ApiService class and errorSchema", async () => {
-    const { url } = createMockServer(() =>
-      Response.json(
-        { code: "SERVICE_ERROR", message: "Service failed" },
-        { status: 400 }
-      )
-    );
-
-    const testEndpoints = createEndpoints({
-      getData: {
-        method: "GET",
-        output: z.object({ data: z.string() }),
-        path: "/data",
-      },
-    });
-
-    const testErrorSchema = z.object({
-      code: z.string(),
-      message: z.string(),
-    });
-
-    class TestService extends ApiService(testEndpoints, testErrorSchema) {
-      constructor(baseUrl: string) {
-        super({ baseUrl, shouldValidateError: validateClientErrors });
+const createValidatorPlugin = (schemas: {
+  body?: z.ZodType;
+  params?: z.ZodType;
+  query?: z.ZodType;
+}): KanonicPlugin => ({
+  name: "validator",
+  version: "1.0.0",
+  init: ({ options, url }) => {
+    if (schemas.params) {
+      const parsedParams = schemas.params.safeParse(options.params ?? {});
+      if (!parsedParams.success) {
+        throw new ValidationError({
+          type: "params",
+          message: "Invalid params",
+          zodError: parsedParams.error,
+        });
       }
     }
 
-    const service = new TestService(url);
-    const result = await service.api.getData();
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("ApiError");
-      const apiError = result.error as ApiError<{
-        code: string;
-        message: string;
-      }>;
-      expect(apiError.statusCode).toBe(400);
-      expect(apiError.data).toBeDefined();
-      expect(apiError.data?.message).toBe("Service failed");
-      expect(apiError.data?.code).toBe("SERVICE_ERROR");
+    if (schemas.query) {
+      const parsedQuery = schemas.query.safeParse(options.query ?? {});
+      if (!parsedQuery.success) {
+        throw new ValidationError({
+          type: "query",
+          message: "Invalid query",
+          zodError: parsedQuery.error,
+        });
+      }
     }
-  });
+
+    if (schemas.body) {
+      const parsedBody = schemas.body.safeParse(options.body);
+      if (!parsedBody.success) {
+        throw new ValidationError({
+          type: "body",
+          message: "Invalid body",
+          zodError: parsedBody.error,
+        });
+      }
+    }
+
+    return { url, options };
+  },
 });
 
-describe("RequestOptions", () => {
-  test("global requestOptions.headers are sent on every request", async () => {
-    let capturedHeader: string | null = "";
+describe("kanonic v2 plugins", () => {
+  test("executes init hooks in order and rewrites raw url and options", async () => {
+    let finalInput: KanonicPluginInitInput | undefined;
+    let requestUrl = "";
+    let requestHeader = "";
 
-    const { url } = createMockServer((req) => {
-      capturedHeader = req.headers.get("x-global");
-      return Response.json({ id: 1, name: "Alice" });
+    const mockFetch = createMockFetch((request) => {
+      requestUrl = request.url;
+      requestHeader = request.headers.get("x-init") ?? "";
+      return Response.json({ ok: true });
     });
 
-    const endpoints = createEndpoints({
-      getUser: {
-        method: "GET",
-        output: z.object({ id: z.number(), name: z.string() }),
-        path: "/users",
-      },
-    });
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      requestOptions: { headers: { "x-global": "global-value" } },
-    });
-
-    await api.getUser();
-    expect(capturedHeader).toBe("global-value");
-  });
-
-  test("endpoint-level requestOptions.headers are sent for that endpoint", async () => {
-    let capturedHeader: string | null = "";
-
-    const { url } = createMockServer((req) => {
-      capturedHeader = req.headers.get("x-endpoint");
-      return Response.json({ id: 1, name: "Alice" });
-    });
-
-    const endpoints = createEndpoints({
-      getUser: {
-        method: "GET",
-        output: z.object({ id: z.number(), name: z.string() }),
-        path: "/users",
-        requestOptions: { headers: { "x-endpoint": "endpoint-value" } },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-
-    await api.getUser();
-    expect(capturedHeader).toBe("endpoint-value");
-  });
-
-  test("per-call requestOptions.headers are sent for that call", async () => {
-    let capturedHeader: string | null = "";
-
-    const { url } = createMockServer((req) => {
-      capturedHeader = req.headers.get("x-call");
-      return Response.json({ id: 1, name: "Alice" });
-    });
-
-    const endpoints = createEndpoints({
-      getUser: {
-        method: "GET",
-        output: z.object({ id: z.number(), name: z.string() }),
-        path: "/users",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-
-    await api.getUser({ headers: { "x-call": "call-value" } });
-    expect(capturedHeader).toBe("call-value");
-  });
-
-  test("per-call headers override endpoint headers which override global headers", async () => {
-    const captured: Record<string, string | null> = {};
-
-    const { url } = createMockServer((req) => {
-      captured["x-layer"] = req.headers.get("x-layer");
-      captured["x-global-only"] = req.headers.get("x-global-only");
-      captured["x-endpoint-only"] = req.headers.get("x-endpoint-only");
-      return Response.json({ id: 1, name: "Alice" });
-    });
-
-    const endpoints = createEndpoints({
-      getUser: {
-        method: "GET",
-        output: z.object({ id: z.number(), name: z.string() }),
-        path: "/users",
-        requestOptions: {
-          headers: { "x-endpoint-only": "yes", "x-layer": "endpoint" },
+    const result = await kanonic<{ ok: boolean }, unknown>("/todos/:id", {
+      baseURL: "https://api.example.com",
+      fetch: mockFetch,
+      headers: { "x-start": "yes" },
+      params: { id: 1 },
+      plugins: [
+        {
+          name: "rewrite-url",
+          version: "1.0.0",
+          init: ({ options, url: rawUrl }) => ({
+            options: {
+              ...options,
+              params: { id: 42 },
+            },
+            url: `${rawUrl}?from=init`,
+          }),
         },
-      },
-    });
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      requestOptions: {
-        headers: { "x-global-only": "yes", "x-layer": "global" },
-      },
-    });
-
-    await api.getUser({ headers: { "x-layer": "call" } });
-
-    expect(captured["x-layer"]).toBe("call"); // call wins
-    expect(captured["x-global-only"]).toBe("yes"); // global flows through
-    expect(captured["x-endpoint-only"]).toBe("yes"); // endpoint flows through
-  });
-
-  test("per-call headers on a zero-option endpoint (first arg is requestOptions)", async () => {
-    let capturedHeader: string | null = "";
-
-    const { url } = createMockServer((req) => {
-      capturedHeader = req.headers.get("x-call");
-      return Response.json([]);
-    });
-
-    const endpoints = createEndpoints({
-      list: {
-        method: "GET",
-        output: z.array(z.unknown()),
-        path: "/items",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-
-    // Zero-option endpoint: requestOptions is the first (and only) argument
-    await api.list({ headers: { "x-call": "zero-option" } });
-    expect(capturedHeader).toBe("zero-option");
-  });
-
-  test("global non-header requestOptions (cache) are forwarded to fetch", async () => {
-    let requestReceived = false;
-
-    const { url } = createMockServer(() => {
-      requestReceived = true;
-      return Response.json({ id: 1, name: "Alice" });
-    });
-
-    const endpoints = createEndpoints({
-      getUser: {
-        method: "GET",
-        output: z.object({ id: z.number(), name: z.string() }),
-        path: "/users",
-      },
-    });
-
-    // Just verify it doesn't throw — Bun's fetch accepts cache but may ignore it
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      requestOptions: { cache: "no-store" },
-    });
-
-    const result = await api.getUser();
-    expect(requestReceived).toBe(true);
-    expect(result.isOk()).toBe(true);
-  });
-
-  test("AbortSignal via per-call requestOptions aborts the request", async () => {
-    const { url } = createMockServer(async () => {
-      await Bun.sleep(500);
-      return Response.json({ id: 1, name: "Alice" });
-    });
-
-    const endpoints = createEndpoints({
-      getUser: {
-        method: "GET",
-        output: z.object({ id: z.number(), name: z.string() }),
-        path: "/users",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-
-    const ac = new AbortController();
-    // Abort immediately
-    setTimeout(() => ac.abort(), 10);
-
-    const result = await api.getUser({ signal: ac.signal });
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("FetchError");
-    }
-  });
-
-  test("endpoint-level requestOptions are not applied to other endpoints", async () => {
-    const capturedA: Record<string, string> = {};
-    const capturedB: Record<string, string> = {};
-
-    const { url } = createMockServer((req) => {
-      const path = new URL(req.url).pathname;
-      const header = req.headers.get("x-only-a") ?? "";
-      if (path === "/a") {
-        capturedA["x-only-a"] = header;
-      }
-      if (path === "/b") {
-        capturedB["x-only-a"] = header;
-      }
-      return Response.json({ id: 1 });
-    });
-
-    const endpoints = createEndpoints({
-      getA: {
-        method: "GET",
-        output: z.object({ id: z.number() }),
-        path: "/a",
-        requestOptions: { headers: { "x-only-a": "yes" } },
-      },
-      getB: {
-        method: "GET",
-        output: z.object({ id: z.number() }),
-        path: "/b",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-
-    await api.getA();
-    await api.getB();
-
-    expect(capturedA["x-only-a"]).toBe("yes"); // set on getA
-    expect(capturedB["x-only-a"]).toBe(""); // not leaked to getB
-  });
-});
-
-// Retry Tests (8 tests)
-describe("Retry", () => {
-  const endpoints = createEndpoints({
-    createUser: {
-      input: z.object({ name: z.string() }),
-      method: "POST",
-      output: z.object({ id: z.number(), name: z.string() }),
-      path: "/users",
-    },
-    getUser: {
-      method: "GET",
-      output: z.object({ id: z.number(), name: z.string() }),
-      path: "/users",
-    },
-  });
-
-  const retryOnce: RetryOptions = {
-    backoff: "constant",
-    delayMs: 0,
-    times: 1,
-  };
-
-  test("succeeds on first try without retrying", async () => {
-    let callCount = 0;
-
-    const { url } = createMockServer(() => {
-      callCount += 1;
-      return Response.json({ id: 1, name: "Alice" });
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-
-    const result = await api.getUser({ retry: retryOnce });
-
-    expect(result.isOk()).toBe(true);
-    expect(callCount).toBe(1);
-  });
-
-  test("retries on FetchError and succeeds", async () => {
-    let callCount = 0;
-
-    const { url } = createMockServer(() => {
-      callCount += 1;
-      if (callCount < 2) {
-        // Force a network error by closing the connection abruptly
-        return new Response(null, { status: 500 });
-      }
-      return Response.json({ id: 1, name: "Alice" });
-    });
-
-    const apiErrorSchema = z.object({ message: z.string() });
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      errorSchema: apiErrorSchema,
-      shouldValidateError: validateAllErrors,
-    });
-
-    // Use shouldRetry that only retries ApiError with status 500
-    const result = await api.getUser({
-      retry: {
-        backoff: "constant",
-        delayMs: 0,
-        shouldRetry: (err) => err._tag === "ApiError" && err.statusCode === 500,
-        times: 2,
-      },
+        {
+          name: "capture",
+          version: "1.0.0",
+          init: (input) => {
+            finalInput = input;
+            return {
+              ...input,
+              options: {
+                ...input.options,
+                headers: {
+                  ...input.options.headers,
+                  "x-init": "done",
+                },
+              },
+            };
+          },
+        },
+      ],
     });
 
     expect(result.isOk()).toBe(true);
-
-    expect(result.unwrap()).toEqual({ id: 1, name: "Alice" });
-    expect(callCount).toBe(2);
+    expect(finalInput?.url).toBe("/todos/:id?from=init");
+    expect(finalInput?.options.params).toEqual({ id: 42 });
+    expect(requestUrl).toBe("https://api.example.com/todos/42?from=init");
+    expect(requestHeader).toBe("done");
   });
 
-  test("retries on ApiError and succeeds", async () => {
-    let callCount = 0;
+  test("onRequest mutations are threaded to later plugins and fetch", async () => {
+    const seen: string[] = [];
+    let authHeader = "";
 
-    const { url } = createMockServer(() => {
-      callCount += 1;
-      if (callCount < 3) {
-        return Response.json(
-          { message: "temporarily unavailable" },
-          { status: 503 }
-        );
-      }
-      return Response.json({ id: 2, name: "Bob" });
+    const mockFetch = createMockFetch((request) => {
+      authHeader = request.headers.get("authorization") ?? "";
+      return Response.json({ ok: true });
     });
 
-    const apiErrorSchema = z.object({ message: z.string() });
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      errorSchema: apiErrorSchema,
-      shouldValidateError: validateAllErrors,
+    const result = await kanonic<{ ok: boolean }, unknown>("/resource", {
+      baseURL: "https://api.example.com",
+      fetch: mockFetch,
+      plugins: [
+        {
+          name: "first",
+          version: "1.0.0",
+          hooks: {
+            onRequest: (context) => {
+              context.headers.set("authorization", "Bearer token-123");
+              seen.push(context.headers.get("authorization") ?? "");
+              return context;
+            },
+          },
+        },
+        {
+          name: "second",
+          version: "1.0.0",
+          hooks: {
+            onRequest: (context) => {
+              seen.push(context.headers.get("authorization") ?? "");
+              return context;
+            },
+          },
+        },
+      ],
     });
 
-    const result = await api.getUser({
-      retry: { backoff: "constant", delayMs: 0, times: 3 },
+    expect(result.isOk()).toBe(true);
+    expect(seen).toEqual(["Bearer token-123", "Bearer token-123"]);
+    expect(authHeader).toBe("Bearer token-123");
+  });
+
+  test("onResponse can replace the response used for parsing", async () => {
+    const mockFetch = createMockFetch(() => Response.json({ ok: false }));
+
+    const result = await kanonic<{ ok: boolean }, unknown>("/resource", {
+      baseURL: "https://api.example.com",
+      fetch: mockFetch,
+      plugins: [
+        {
+          name: "replace-response",
+          version: "1.0.0",
+          hooks: {
+            onResponse: () => Response.json({ ok: true }),
+          },
+        },
+      ],
+      outputSchema: z.object({
+        ok: z.boolean(),
+      }),
     });
 
     expect(result.isOk()).toBe(true);
     if (result.isOk()) {
-      expect(result.value).toEqual({ id: 2, name: "Bob" });
+      expect(result.value.ok).toBe(true);
     }
-    expect(callCount).toBe(3);
   });
 
-  test("returns last error after all retries are exhausted", async () => {
-    let callCount = 0;
-
-    const { url } = createMockServer(() => {
-      callCount += 1;
-      return Response.json({ message: "always fails" }, { status: 500 });
-    });
-
-    const apiErrorSchema = z.object({ message: z.string() });
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      errorSchema: apiErrorSchema,
-      shouldValidateError: validateAllErrors,
-    });
-
-    const result = await api.getUser({
-      retry: { backoff: "constant", delayMs: 0, times: 2 },
-    });
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("ApiError");
-      const err = result.error as ApiError<{ message: string }>;
-      expect(err.statusCode).toBe(500);
-      expect(err.data).toEqual({ message: "always fails" });
-    }
-    // initial attempt + 2 retries = 3 total calls
-    expect(callCount).toBe(3);
-  });
-
-  test("stops retrying when shouldRetry returns false", async () => {
-    let callCount = 0;
-
-    const { url } = createMockServer(() => {
-      callCount += 1;
-      return Response.json({ message: "client error" }, { status: 400 });
-    });
-
-    const apiErrorSchema = z.object({ message: z.string() });
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      errorSchema: apiErrorSchema,
-      shouldValidateError: validateClientErrors,
-    });
-
-    const result = await api.getUser({
-      retry: {
-        backoff: "constant",
-        delayMs: 0,
-        shouldRetry: () => false,
-        times: 3,
-      },
-    });
-
-    expect(result.isErr()).toBe(true);
-    // shouldRetry returned false immediately — only 1 call (no retries)
-    expect(callCount).toBe(1);
-  });
-
-  test("shouldRetry can selectively retry only ApiError (not FetchError)", async () => {
-    let callCount = 0;
-
-    const { url } = createMockServer(() => {
-      callCount += 1;
-      return Response.json({ message: "server error" }, { status: 500 });
-    });
-
-    const apiErrorSchema = z.object({ message: z.string() });
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      errorSchema: apiErrorSchema,
-      shouldValidateError: validateAllErrors,
-    });
-
-    const errorsReceived: string[] = [];
-
-    const result = await api.getUser({
-      retry: {
-        backoff: "constant",
-        delayMs: 0,
-        shouldRetry: (err) => {
-          errorsReceived.push(err._tag);
-          return err._tag === "ApiError";
+  test("onSuccess fires once after retries eventually succeed", async () => {
+    let attempts = 0;
+    const events: string[] = [];
+    const observerPlugin: KanonicPlugin = {
+      name: "observer",
+      version: "1.0.0",
+      hooks: {
+        onRetry: (_context, response, error, attempt) => {
+          events.push(
+            `retry:${attempt}:${response?.status ?? "none"}:${error._tag}`
+          );
         },
-        times: 2,
+        onSuccess: (_context, response, data) => {
+          const parsedData = data as { ok: boolean };
+          events.push(`success:${response.status}:${String(parsedData.ok)}`);
+        },
+      },
+    };
+
+    const mockFetch = createMockFetch(() => {
+      attempts += 1;
+      if (attempts < 3) {
+        return new Response("boom", { status: 503, statusText: "Unavailable" });
+      }
+
+      return Response.json({ ok: true });
+    });
+
+    const result = await kanonic<{ ok: boolean }, unknown>("/resource", {
+      baseURL: "https://api.example.com",
+      fetch: mockFetch,
+      plugins: [observerPlugin],
+      retry: {
+        strategy: "fixed",
+        attempts: 2,
+      },
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(events).toEqual([
+      "retry:0:503:ApiError",
+      "retry:1:503:ApiError",
+      "success:200:true",
+    ]);
+  });
+
+  test("onFail fires once on terminal transport failure with no response", async () => {
+    const events: string[] = [];
+    const mockFetch = createRejectingFetch("network down");
+
+    const result = await kanonic("https://example.com", {
+      fetch: mockFetch,
+      plugins: [
+        {
+          name: "observer",
+          version: "1.0.0",
+          hooks: {
+            onFail: (_context, response, error) => {
+              events.push(`fail:${response === undefined}:${error._tag}`);
+            },
+          },
+        },
+      ],
+    });
+
+    expect(result.isErr()).toBe(true);
+    expect(events).toEqual(["fail:true:FetchError"]);
+  });
+
+  test("side-effect hook failures are swallowed", async () => {
+    const mockFetch = createMockFetch(() => Response.json({ ok: true }));
+
+    const result = await kanonic<{ ok: boolean }, unknown>("/resource", {
+      baseURL: "https://api.example.com",
+      fetch: mockFetch,
+      plugins: [
+        {
+          name: "noisy",
+          version: "1.0.0",
+          hooks: {
+            onSuccess: () => {
+              throw new Error("ignore me");
+            },
+          },
+        },
+      ],
+    });
+
+    expect(result.isOk()).toBe(true);
+  });
+
+  test("unexpected mutating hook failures become PluginError", async () => {
+    const result = await kanonic("https://example.com", {
+      plugins: [
+        {
+          name: "broken",
+          version: "1.0.0",
+          init: () => {
+            throw new Error("boom");
+          },
+        },
+      ],
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (result.isErr() && result.error._tag === "PluginError") {
+      expect(result.error._tag).toBe("PluginError");
+      expect(result.error.pluginName).toBe("broken");
+      expect(result.error.hook).toBe("init");
+    }
+  });
+
+  test("existing KanonicError thrown by plugin is preserved", async () => {
+    const parsed = z.object({ id: z.string() }).safeParse({ id: 1 });
+    if (parsed.success) {
+      throw new Error("Expected invalid query fixture");
+    }
+
+    const result = await kanonic("https://example.com", {
+      plugins: [
+        {
+          name: "validator",
+          version: "1.0.0",
+          hooks: {
+            onRequest: () => {
+              throw new ValidationError({
+                type: "query",
+                message: "Nope",
+                zodError: parsed.error,
+              });
+            },
+          },
+        },
+      ],
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (result.isErr() && result.error._tag === "ValidationError") {
+      expect(result.error._tag).toBe("ValidationError");
+      expect(result.error.type).toBe("query");
+    }
+  });
+
+  test("validator plugins can short-circuit before fetch", async () => {
+    let calls = 0;
+    const mockFetch = createMockFetch(() => {
+      calls += 1;
+      return Response.json({ ok: true });
+    });
+
+    const result = await kanonic("https://example.com/todos/:id", {
+      body: { title: 42 },
+      fetch: mockFetch,
+      params: { id: "bad" },
+      plugins: [
+        createValidatorPlugin({
+          body: z.object({ title: z.string() }),
+          params: z.object({ id: z.number() }),
+        }),
+      ],
+    });
+
+    expect(result.isErr()).toBe(true);
+    expect(calls).toBe(0);
+    if (result.isErr()) {
+      expect(result.error._tag).toBe("ValidationError");
+    }
+  });
+
+  test("onRetry receives undefined response on transport failures", async () => {
+    const events: string[] = [];
+    let calls = 0;
+    const mockFetch = createMockFetch(() => {
+      calls += 1;
+      throw new TypeError("offline");
+    });
+
+    const result = await kanonic("https://example.com", {
+      fetch: mockFetch,
+      plugins: [
+        {
+          name: "observer",
+          version: "1.0.0",
+          hooks: {
+            onRetry: (_context, response, error, attempt) => {
+              events.push(
+                `retry:${attempt}:${response === undefined}:${error._tag}`
+              );
+            },
+          },
+        },
+      ],
+      retry: {
+        strategy: "fixed",
+        attempts: 1,
       },
     });
 
     expect(result.isErr()).toBe(true);
-    // All errors were ApiError and shouldRetry returned true each time → 3 calls total
-    expect(callCount).toBe(3);
-    expect(errorsReceived).toEqual(["ApiError", "ApiError"]);
+    expect(calls).toBe(2);
+    expect(events).toEqual(["retry:0:true:FetchError"]);
   });
 
-  test("validation errors are never retried regardless of shouldRetry", async () => {
-    let callCount = 0;
+  test("shouldValidateError defaults to skipping error schema parsing", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ code: "NOPE" }, { status: 400 })
+    );
 
-    const { url } = createMockServer(() => {
-      callCount += 1;
-      return Response.json({ id: 1, name: "Alice" });
-    });
-
-    const endpointsWithInput = createEndpoints({
-      createUser: {
-        input: z.object({ name: z.string() }),
-        method: "POST",
-        output: z.object({ id: z.number(), name: z.string() }),
-        path: "/users",
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints: endpointsWithInput });
-
-    const result = await api.createUser(
-      // @ts-expect-error intentionally passing wrong input to trigger validation error
-      { name: 42 },
+    const result = await kanonic<unknown, { code: string }>(
+      "https://example.com/resource",
       {
-        retry: {
-          backoff: "constant",
-          delayMs: 0,
-          shouldRetry: () => true,
-          times: 5,
-        },
+        apiErrorDataSchema: z.object({ code: z.string() }),
+        fetch: mockFetch,
       }
     );
 
     expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("InputValidationError");
-    }
-    // Validation happened locally; server was never called
-    expect(callCount).toBe(0);
-  });
-
-  test("backoff strategies compute correct delays", async () => {
-    const delays: number[] = [];
-    const origSetTimeout = globalThis.setTimeout;
-
-    // Patch setTimeout to capture delay values without waiting
-    globalThis.setTimeout = ((fn: () => void, ms: number) => {
-      delays.push(ms);
-      return origSetTimeout(fn, 0);
-    }) as typeof globalThis.setTimeout;
-
-    let callCount = 0;
-    const { url } = createMockServer(() => {
-      callCount += 1;
-      if (callCount < 4) {
-        return Response.json({ message: "fail" }, { status: 500 });
-      }
-      return Response.json({ id: 1, name: "Alice" });
-    });
-
-    const apiErrorSchema = z.object({ message: z.string() });
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      errorSchema: apiErrorSchema,
-      shouldValidateError: validateAllErrors,
-    });
-
-    await api.getUser({
-      retry: { backoff: "exponential", delayMs: 100, times: 3 },
-    });
-
-    // Restore original
-    globalThis.setTimeout = origSetTimeout;
-
-    // exponential: 100*2^0=100, 100*2^1=200, 100*2^2=400
-    expect(delays).toEqual([100, 200, 400]);
-    expect(callCount).toBe(4);
-  });
-});
-
-// Nested endpoint tree tests
-describe("Nested Endpoints", () => {
-  test("should create client with nested groups", () => {
-    const endpoints = createEndpoints({
-      todos: {
-        list: {
-          method: "GET",
-          output: z.array(z.object({ id: z.number(), title: z.string() })),
-          path: "/todos",
-        },
-        get: {
-          method: "GET",
-          output: z.object({ id: z.number(), title: z.string() }),
-          params: z.object({ id: z.number() }),
-          path: "/todos/:id",
-        },
-      },
-      users: {
-        list: {
-          method: "GET",
-          output: z.array(z.object({ id: z.number(), name: z.string() })),
-          path: "/users",
-        },
-      },
-    });
-
-    const api = createApi({ baseUrl: "https://api.example.com", endpoints });
-
-    expect(api.todos).toBeDefined();
-    expect(typeof api.todos.list).toBe("function");
-    expect(typeof api.todos.get).toBe("function");
-    expect(api.users).toBeDefined();
-    expect(typeof api.users.list).toBe("function");
-  });
-
-  test("nested zero-option endpoint returns correct data", async () => {
-    const { url } = createMockServer(() =>
-      Response.json([
-        { id: 1, title: "First" },
-        { id: 2, title: "Second" },
-      ])
-    );
-
-    const endpoints = createEndpoints({
-      todos: {
-        list: {
-          method: "GET",
-          output: z.array(z.object({ id: z.number(), title: z.string() })),
-          path: "/todos",
-        },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.todos.list();
-
-    expect(result.isOk()).toBe(true);
-    const value = result.unwrap();
-    expect(value).toHaveLength(2);
-    expect(value[0]?.title).toBe("First");
-  });
-
-  test("nested endpoint with params returns correct data", async () => {
-    const { url } = createMockServer(() =>
-      Response.json({ id: 42, title: "Nested todo" })
-    );
-
-    const endpoints = createEndpoints({
-      todos: {
-        get: {
-          method: "GET",
-          output: z.object({ id: z.number(), title: z.string() }),
-          params: z.object({ id: z.number() }),
-          path: "/todos/:id",
-        },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.todos.get({ params: { id: 42 } });
-
-    expect(result.isOk()).toBe(true);
-    const value = result.unwrap();
-    expect(value.id).toBe(42);
-    expect(value.title).toBe("Nested todo");
-  });
-
-  test("nested POST endpoint with input works", async () => {
-    let receivedBody: unknown;
-
-    const { url } = createMockServer(async (req) => {
-      receivedBody = await req.json();
-      return Response.json({ id: 1, title: "Created" });
-    });
-
-    const endpoints = createEndpoints({
-      todos: {
-        create: {
-          input: z.object({ title: z.string() }),
-          method: "POST",
-          output: z.object({ id: z.number(), title: z.string() }),
-          path: "/todos",
-        },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.todos.create({ input: { title: "Created" } });
-
-    expect(result.isOk()).toBe(true);
-    expect(receivedBody).toEqual({ title: "Created" });
-  });
-
-  test("nested endpoint returns ApiError on 4xx", async () => {
-    const { url } = createMockServer(
-      () => new Response("Not Found", { status: 404 })
-    );
-
-    const endpoints = createEndpoints({
-      todos: {
-        get: {
-          method: "GET",
-          output: z.object({ id: z.number() }),
-          params: z.object({ id: z.number() }),
-          path: "/todos/:id",
-        },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.todos.get({ params: { id: 99 } });
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("ApiError");
-      expect((result.error as ApiError).statusCode).toBe(404);
+    if (result.isErr() && result.error._tag === "ApiError") {
+      expect(result.error.data).toBeUndefined();
+      expect(result.error.text).toContain("NOPE");
     }
   });
 
-  test("deeply nested endpoints work", async () => {
-    const { url } = createMockServer(() =>
-      Response.json({ id: 1, body: "comment" })
+  test("shouldValidateError parses typed error data when enabled", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ code: "NOPE" }, { status: 400 })
     );
 
-    const endpoints = createEndpoints({
-      posts: {
-        comments: {
-          get: {
-            method: "GET",
-            output: z.object({ id: z.number(), body: z.string() }),
-            params: z.object({ postId: z.number(), commentId: z.number() }),
-            path: "/posts/:postId/comments/:commentId",
-          },
-        },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    const result = await api.posts.comments.get({
-      params: { commentId: 1, postId: 1 },
-    });
-
-    expect(result.isOk()).toBe(true);
-    const value = result.unwrap();
-    expect(value.body).toBe("comment");
-  });
-
-  test("nested endpoint-level requestOptions are scoped per endpoint", async () => {
-    const captured: Record<string, string | null> = {};
-
-    const { url } = createMockServer((req) => {
-      const path = new URL(req.url).pathname;
-      if (path === "/todos") {
-        captured["todos"] = req.headers.get("x-only-todos");
+    const result = await kanonic<unknown, { code: string }>(
+      "https://example.com/resource",
+      {
+        apiErrorDataSchema: z.object({ code: z.string() }),
+        fetch: mockFetch,
+        shouldValidateError: () => true,
       }
-      if (path === "/users") {
-        captured["users"] = req.headers.get("x-only-todos");
-      }
-      return Response.json([]);
-    });
-
-    const endpoints = createEndpoints({
-      todos: {
-        list: {
-          method: "GET",
-          output: z.array(z.unknown()),
-          path: "/todos",
-          requestOptions: { headers: { "x-only-todos": "yes" } },
-        },
-      },
-      users: {
-        list: {
-          method: "GET",
-          output: z.array(z.unknown()),
-          path: "/users",
-        },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    await api.todos.list();
-    await api.users.list();
-
-    expect(captured["todos"]).toBe("yes");
-    expect(captured["users"]).toBeNull();
-  });
-
-  test("per-call requestOptions work on nested endpoints", async () => {
-    let capturedHeader = "";
-
-    const { url } = createMockServer((req) => {
-      capturedHeader = req.headers.get("x-call") ?? "";
-      return Response.json({ id: 1 });
-    });
-
-    const endpoints = createEndpoints({
-      todos: {
-        get: {
-          method: "GET",
-          output: z.object({ id: z.number() }),
-          params: z.object({ id: z.number() }),
-          path: "/todos/:id",
-        },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-    await api.todos.get(
-      { params: { id: 1 } },
-      { headers: { "x-call": "per-call-value" } }
     );
 
-    expect(capturedHeader).toBe("per-call-value");
-  });
-
-  test("flat and nested endpoints can coexist", async () => {
-    const { url } = createMockServer((req) => {
-      const path = new URL(req.url).pathname;
-      if (path === "/health") {
-        return Response.json({ ok: true });
-      }
-      return Response.json([]);
-    });
-
-    const endpoints = createEndpoints({
-      health: {
-        method: "GET",
-        output: z.object({ ok: z.boolean() }),
-        path: "/health",
-      },
-      todos: {
-        list: {
-          method: "GET",
-          output: z.array(z.unknown()),
-          path: "/todos",
-        },
-      },
-    });
-
-    const api = createApi({ baseUrl: url, endpoints });
-
-    const healthResult = await api.health();
-    const todosResult = await api.todos.list();
-
-    expect(healthResult.isOk()).toBe(true);
-    expect(todosResult.isOk()).toBe(true);
-  });
-});
-
-// ─── Plugin System ────────────────────────────────────────────────────────────
-describe("Plugin System", () => {
-  // Helpers
-  const makeEndpoints = () =>
-    createEndpoints({
-      item: {
-        method: "GET" as const,
-        output: z.object({ id: z.number() }),
-        params: z.object({ id: z.number() }),
-        path: "/items/:id",
-      },
-      create: {
-        input: z.object({ name: z.string() }),
-        method: "POST" as const,
-        output: z.object({ id: z.number(), name: z.string() }),
-        path: "/items",
-      },
-    });
-
-  test("plugin without hooks does not break request", async () => {
-    const { url } = createMockServer(() => Response.json({ id: 1 }));
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [{ id: "noop", name: "Noop", version: "1.0.0" }],
-    });
-
-    const result = await api.item({ params: { id: 1 } });
-    expect(result.isOk()).toBe(true);
-  });
-
-  test("init can rewrite url and options", async () => {
-    let capturedUrl = "";
-
-    const { url } = createMockServer((req) => {
-      capturedUrl = req.url;
-      return Response.json({ id: 1 });
-    });
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "url-rewriter",
-          name: "URL Rewriter",
-          version: "1.0.0",
-          async init(u, options) {
-            return { url: u.replace("/items/1", "/items/99"), options };
-          },
-        },
-      ],
-    });
-
-    await api.item({ params: { id: 1 } });
-    expect(capturedUrl).toContain("/items/99");
-  });
-
-  test("init runs only once per invocation, not on each retry", async () => {
-    let initCallCount = 0;
-    let attemptCount = 0;
-
-    const { url } = createMockServer(() => {
-      attemptCount += 1;
-      return new Response("error", { status: 503 });
-    });
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "counter",
-          name: "Counter",
-          version: "1.0.0",
-          async init(u, options) {
-            initCallCount += 1;
-            return { url: u, options };
-          },
-        },
-      ],
-    });
-
-    await api.item(
-      { params: { id: 1 } },
-      { retry: { backoff: "constant", delayMs: 0, times: 2 } }
-    );
-
-    expect(initCallCount).toBe(1);
-    expect(attemptCount).toBe(3); // initial + 2 retries
-  });
-
-  test("onRequest receives merged context and can mutate headers", async () => {
-    let capturedHeader = "";
-
-    const { url } = createMockServer((req) => {
-      capturedHeader = req.headers.get("x-plugin") ?? "";
-      return Response.json({ id: 1 });
-    });
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "header-adder",
-          name: "Header Adder",
-          version: "1.0.0",
-          hooks: {
-            async onRequest(ctx) {
-              return {
-                ...ctx,
-                headers: { ...ctx.headers, "x-plugin": "injected" },
-              };
-            },
-          },
-        },
-      ],
-    });
-
-    await api.item({ params: { id: 1 } });
-    expect(capturedHeader).toBe("injected");
-  });
-
-  test("multiple onRequest hooks are applied in order (chain)", async () => {
-    const order: number[] = [];
-
-    const { url } = createMockServer(() => Response.json({ id: 1 }));
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "p1",
-          name: "P1",
-          version: "1.0.0",
-          hooks: {
-            async onRequest(ctx) {
-              order.push(1);
-              return ctx;
-            },
-          },
-        },
-        {
-          id: "p2",
-          name: "P2",
-          version: "1.0.0",
-          hooks: {
-            async onRequest(ctx) {
-              order.push(2);
-              return ctx;
-            },
-          },
-        },
-        {
-          id: "p3",
-          name: "P3",
-          version: "1.0.0",
-          hooks: {
-            async onRequest(ctx) {
-              order.push(3);
-              return ctx;
-            },
-          },
-        },
-      ],
-    });
-
-    await api.item({ params: { id: 1 } });
-    expect(order).toEqual([1, 2, 3]);
-  });
-
-  test("onRequest context mutations are visible to subsequent plugins", async () => {
-    let finalHeader = "";
-
-    const { url } = createMockServer((req) => {
-      finalHeader = req.headers.get("x-chain") ?? "";
-      return Response.json({ id: 1 });
-    });
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "p1",
-          name: "P1",
-          version: "1.0.0",
-          hooks: {
-            async onRequest(ctx) {
-              return { ...ctx, headers: { ...ctx.headers, "x-chain": "A" } };
-            },
-          },
-        },
-        {
-          id: "p2",
-          name: "P2",
-          version: "1.0.0",
-          hooks: {
-            async onRequest(ctx) {
-              return {
-                ...ctx,
-                headers: {
-                  ...ctx.headers,
-                  "x-chain": `${ctx.headers["x-chain"]}B`,
-                },
-              };
-            },
-          },
-        },
-      ],
-    });
-
-    await api.item({ params: { id: 1 } });
-    expect(finalHeader).toBe("AB");
-  });
-
-  test("onResponse can replace the response", async () => {
-    const { url } = createMockServer(() => Response.json({ id: 99 }));
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "response-replacer",
-          name: "Response Replacer",
-          version: "1.0.0",
-          hooks: {
-            async onResponse(_ctx, _response) {
-              return Response.json({ id: 42 });
-            },
-          },
-        },
-      ],
-    });
-
-    const result = await api.item({ params: { id: 99 } });
-    expect(result.isOk()).toBe(true);
-    expect(result.unwrap().id).toBe(42);
-  });
-
-  test("onSuccess is called with parsed data on success", async () => {
-    let capturedData: unknown = null;
-
-    const { url } = createMockServer(() => Response.json({ id: 7 }));
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "spy",
-          name: "Spy",
-          version: "1.0.0",
-          hooks: {
-            async onSuccess(_ctx, _response, data) {
-              capturedData = data;
-            },
-          },
-        },
-      ],
-    });
-
-    const result = await api.item({ params: { id: 7 } });
-    expect(result.isOk()).toBe(true);
-    expect(capturedData).toEqual({ id: 7 });
-  });
-
-  test("onError is called with error on failure", async () => {
-    let capturedTag = "";
-
-    const { url } = createMockServer(
-      () => new Response("not found", { status: 404 })
-    );
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "spy",
-          name: "Spy",
-          version: "1.0.0",
-          hooks: {
-            async onError(_ctx, error) {
-              capturedTag = error._tag;
-            },
-          },
-        },
-      ],
-    });
-
-    const result = await api.item({ params: { id: 1 } });
     expect(result.isErr()).toBe(true);
-    expect(capturedTag).toBe("ApiError");
-  });
-
-  test("onSuccess and onError are each called exactly once regardless of retries", async () => {
-    let successCount = 0;
-    let errorCount = 0;
-
-    const { url } = createMockServer(
-      () => new Response("error", { status: 500 })
-    );
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "counter",
-          name: "Counter",
-          version: "1.0.0",
-          hooks: {
-            async onSuccess() {
-              successCount += 1;
-            },
-            async onError() {
-              errorCount += 1;
-            },
-          },
-        },
-      ],
-    });
-
-    await api.item(
-      { params: { id: 1 } },
-      { retry: { backoff: "constant", delayMs: 0, times: 2 } }
-    );
-
-    expect(successCount).toBe(0);
-    expect(errorCount).toBe(1);
-  });
-
-  test("onRetry is called once per retry (not on final outcome)", async () => {
-    let retryCount = 0;
-    let attemptCount = 0;
-
-    const { url } = createMockServer(() => {
-      attemptCount += 1;
-      if (attemptCount < 3) {
-        return new Response("fail", { status: 503 });
-      }
-      return Response.json({ id: 1 });
-    });
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "retry-spy",
-          name: "Retry Spy",
-          version: "1.0.0",
-          hooks: {
-            async onRetry() {
-              retryCount += 1;
-            },
-          },
-        },
-      ],
-    });
-
-    const result = await api.item(
-      { params: { id: 1 } },
-      { retry: { backoff: "constant", delayMs: 0, times: 3 } }
-    );
-
-    expect(result.isOk()).toBe(true);
-    expect(retryCount).toBe(2); // failed twice before succeeding
-    expect(attemptCount).toBe(3);
-  });
-
-  test("onRequest and onResponse fire on every attempt during retries", async () => {
-    let requestCount = 0;
-    let responseCount = 0;
-    let attemptCount = 0;
-
-    const { url } = createMockServer(() => {
-      attemptCount += 1;
-      return new Response("fail", { status: 503 });
-    });
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "counter",
-          name: "Counter",
-          version: "1.0.0",
-          hooks: {
-            async onRequest(ctx) {
-              requestCount += 1;
-              return ctx;
-            },
-            async onResponse(_ctx, res) {
-              responseCount += 1;
-              return res;
-            },
-          },
-        },
-      ],
-    });
-
-    await api.item(
-      { params: { id: 1 } },
-      { retry: { backoff: "constant", delayMs: 0, times: 2 } }
-    );
-
-    expect(attemptCount).toBe(3);
-    expect(requestCount).toBe(3);
-    expect(responseCount).toBe(3);
-  });
-
-  test("validation errors bypass all plugin hooks", async () => {
-    const calls: string[] = [];
-
-    const endpoints = createEndpoints({
-      create: {
-        input: z.object({ name: z.string().min(1) }),
-        method: "POST" as const,
-        output: z.object({ id: z.number() }),
-        path: "/items",
-      },
-    });
-
-    const api = createApi({
-      baseUrl: "http://localhost",
-      endpoints,
-      plugins: [
-        {
-          id: "spy",
-          name: "Spy",
-          version: "1.0.0",
-          async init(u, options) {
-            calls.push("init");
-            return { url: u, options };
-          },
-          hooks: {
-            async onRequest(ctx) {
-              calls.push("onRequest");
-              return ctx;
-            },
-            async onResponse(_ctx, res) {
-              calls.push("onResponse");
-              return res;
-            },
-            async onSuccess() {
-              calls.push("onSuccess");
-            },
-            async onError() {
-              calls.push("onError");
-            },
-          },
-        },
-      ],
-    });
-
-    const result = await api.create({ input: { name: "" } });
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error._tag).toBe("InputValidationError");
+    if (result.isErr() && result.error._tag === "ApiError") {
+      expect(result.error.data).toEqual({ code: "NOPE" });
     }
-    expect(calls).toHaveLength(0);
   });
 
-  test("plugin hooks that throw do not affect the final result (onSuccess)", async () => {
-    const { url } = createMockServer(() => Response.json({ id: 1 }));
-
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "thrower",
-          name: "Thrower",
-          version: "1.0.0",
-          hooks: {
-            async onSuccess() {
-              throw new Error("plugin explosion");
-            },
-          },
-        },
-      ],
-    });
-
-    const result = await api.item({ params: { id: 1 } });
-    expect(result.isOk()).toBe(true);
-  });
-
-  test("plugin hooks that throw do not affect the final result (onError)", async () => {
-    const { url } = createMockServer(
-      () => new Response("nope", { status: 500 })
+  test("shouldValidateError falls back to ApiError when validation fails", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ message: 42 }, { status: 400 })
     );
 
-    const api = createApi({
-      baseUrl: url,
-      endpoints: makeEndpoints(),
-      plugins: [
-        {
-          id: "thrower",
-          name: "Thrower",
-          version: "1.0.0",
-          hooks: {
-            async onError() {
-              throw new Error("plugin explosion");
-            },
-          },
-        },
-      ],
-    });
+    const result = await kanonic<unknown, { message: string }>(
+      "https://example.com/resource",
+      {
+        apiErrorDataSchema: z.object({ message: z.string() }),
+        fetch: mockFetch,
+        shouldValidateError: () => true,
+      }
+    );
 
-    const result = await api.item({ params: { id: 1 } });
     expect(result.isErr()).toBe(true);
+    if (result.isErr() && result.error._tag === "ApiError") {
+      expect(result.error.data).toBeUndefined();
+      expect(result.error.text).toContain("42");
+    }
   });
 
-  test("plugins work with nested endpoint groups", async () => {
-    let capturedHeader = "";
+  test("stream returns ReadableStream of parsed chunks", async () => {
+    const mockFetch = createMockFetch(
+      () => new Response(createSSEStream(["hello", "world"]))
+    );
+    const options = {
+      fetch: mockFetch,
+      stream: true as const,
+    };
 
-    const { url } = createMockServer((req) => {
-      capturedHeader = req.headers.get("x-nested") ?? "";
-      return Response.json({ id: 1 });
+    const result = await kanonic<string, unknown>(
+      "https://example.com/stream",
+      options
+    );
+
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      const chunks = await collectStreamChunks(result.value);
+      expect(chunks).toEqual(["hello", "world"]);
+    }
+  });
+
+  test("stream validates each chunk with output schema", async () => {
+    const mockFetch = createMockFetch(
+      () => new Response(createSSEStream([{ id: 1 }, { id: 2 }]))
+    );
+    const options = {
+      fetch: mockFetch,
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+      stream: true as const,
+    };
+
+    const result = await kanonic<{ id: number }, unknown>(
+      "https://example.com/stream",
+      options
+    );
+
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      const chunks = await collectStreamChunks(result.value);
+      expect(chunks).toEqual([{ id: 1 }, { id: 2 }]);
+    }
+  });
+
+  test("stream errors when a chunk does not match output schema", async () => {
+    const mockFetch = createMockFetch(
+      () => new Response(createSSEStream([{ id: 1 }, { id: "bad" }]))
+    );
+    const options = {
+      fetch: mockFetch,
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+      stream: true as const,
+    };
+
+    const result = await kanonic<{ id: number }, unknown>(
+      "https://example.com/stream",
+      options
+    );
+
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      const reader = result.value.getReader();
+      const firstChunk = await reader.read();
+      expect(firstChunk.value).toEqual({ id: 1 });
+      await expect(reader.read()).rejects.toMatchObject({
+        _tag: "ValidationError",
+        type: "output",
+      });
+      reader.releaseLock();
+    }
+  });
+
+  test("validateOutput false skips response schema validation", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ id: "unexpected-string" })
+    );
+
+    const result = await kanonic("https://example.com/resource", {
+      fetch: mockFetch,
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+      validateOutput: false,
     });
 
-    const endpoints = createEndpoints({
-      items: {
-        get: {
-          method: "GET" as const,
-          output: z.object({ id: z.number() }),
-          params: z.object({ id: z.number() }),
-          path: "/items/:id",
-        },
-      },
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      const rawValue = result.value as unknown;
+      expect(rawValue).toEqual({ id: "unexpected-string" });
+    }
+  });
+
+  test("stream skips chunk schema validation when validateOutput is false", async () => {
+    const mockFetch = createMockFetch(
+      () => new Response(createSSEStream([{ id: 1 }, { id: "bad" }]))
+    );
+    const options = {
+      fetch: mockFetch,
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+      stream: true as const,
+      validateOutput: false,
+    };
+
+    const result = await kanonic<{ id: number | string }, unknown>(
+      "https://example.com/stream",
+      options
+    );
+
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      const chunks = await collectStreamChunks(result.value);
+      expect(chunks).toEqual([{ id: 1 }, { id: "bad" }]);
+    }
+  });
+
+  test("manual success generic works with stream and defaults error to unknown", () => {
+    const mockFetch = createMockFetch(
+      () => new Response(createSSEStream(["hello", "world"]))
+    );
+
+    const resultPromise: Promise<
+      Result<ReadableStream<string>, KanonicError<unknown>>
+    > = kanonic<string>("https://example.com/stream", {
+      fetch: mockFetch,
+      stream: true as const,
     });
 
-    const api = createApi({
-      baseUrl: url,
-      endpoints,
-      plugins: [
-        {
-          id: "header-adder",
-          name: "Header Adder",
-          version: "1.0.0",
-          hooks: {
-            async onRequest(ctx) {
-              return { ...ctx, headers: { ...ctx.headers, "x-nested": "yes" } };
-            },
-          },
-        },
-      ],
-    });
-
-    await api.items.get({ params: { id: 1 } });
-    expect(capturedHeader).toBe("yes");
+    expect(resultPromise).toBeInstanceOf(Promise);
   });
 });

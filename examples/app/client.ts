@@ -1,34 +1,17 @@
 // client.ts
-// Demonstrates createApi with:
-//   - typed error responses (errorSchema + shouldValidateError)
-//   - exhaustive error handling via switch(_tag)
-//   - input validation catching bad data before any network call
-//   - requestOptions at global, endpoint, and per-call level
-//   - per-call retry with backoff and shouldRetry predicate
-//   - plugins (logger + timing)
-//
-// Run: bun run client.ts
-
 import { createApi, validateClientErrors } from "@kanonic/fetch";
 
 import { apiErrorSchema, endpoints } from "./endpoints";
 import { loggerPlugin, timingPlugin } from "./plugins";
 
 const api = createApi({
-  baseUrl: "https://jsonplaceholder.typicode.com",
+  baseURL: "https://jsonplaceholder.typicode.com",
   endpoints,
-  // Parse 4xx error bodies against apiErrorSchema.
-  // error.data will be typed as { code, message, details? } when parsing succeeds.
   errorSchema: apiErrorSchema,
   shouldValidateError: validateClientErrors,
-  // Plugins applied to every request in order.
   plugins: [loggerPlugin, timingPlugin],
-  // Global fetch options applied to every request.
-  // Headers here are the lowest priority and can be overridden per-endpoint or per-call.
-  requestOptions: {
-    cache: "no-store",
-    headers: { "X-Client": "kanonic-example" },
-  },
+  cache: "no-store",
+  headers: { "X-Client": "kanonic-example" },
 });
 
 // ─── 1. Successful request ────────────────────────────────────────────────────
@@ -68,12 +51,12 @@ if (user.isErr()) {
       console.log("  Network failure:", error.message);
       break;
     }
-    case "InputValidationError": {
-      console.log("  Invalid input:", error.zodError.issues);
+    case "TimeoutError": {
+      console.log("  Request timed out:", error.message);
       break;
     }
-    case "OutputValidationError": {
-      console.log("  Unexpected response shape:", error.zodError.issues);
+    case "ValidationError": {
+      console.log(`  Invalid ${error.type}:`, error.zodError.issues);
       break;
     }
     default: {
@@ -87,12 +70,12 @@ if (user.isErr()) {
 // ─── 3. Input validation (caught before the network call) ─────────────────────
 
 console.log(
-  "3. Creating a todo with an empty title (expects InputValidationError)\n"
+  "3. Creating a todo with an empty title (expects ValidationError)\n"
 );
 
-const created = await api.todos.create({ input: { title: "", userId: 1 } });
+const created = await api.todos.create({ body: { title: "", userId: 1 } });
 
-if (created.isErr() && created.error._tag === "InputValidationError") {
+if (created.isErr() && created.error._tag === "ValidationError") {
   console.log("  ✓ Caught before fetch:");
   for (const issue of created.error.zodError.issues) {
     console.log("", issue.path.join("."), "—", issue.message);
@@ -115,7 +98,7 @@ completedTitles.match({
   ok: (titles) => console.log(`  ✓ ${titles.length} completed todos\n`),
 });
 
-// ─── 5. Per-call requestOptions ───────────────────────────────────────────────
+// ─── 5. Per-call overrides ────────────────────────────────────────────────────
 
 console.log("5. Fetch todo #1 with an AbortController (not aborted)\n");
 
@@ -137,16 +120,13 @@ console.log(
   "6. Fetch todo #1 with retry (up to 3 retries, exponential backoff)\n"
 );
 
-// Retry is opt-in per call. Validation errors are never retried.
-// shouldRetry receives either a FetchError or ApiError<E> — never a validation error.
 const retried = await api.todos.get(
   { params: { id: 1 } },
   {
     retry: {
-      times: 3, // up to 3 retries (4 total calls if all fail)
-      delayMs: 200, // base delay in ms
-      backoff: "exponential", // 200ms, 400ms, 800ms
-      // Only retry on network failures or 5xx server errors — stop on 4xx
+      attempts: 3,
+      initialDelay: 200,
+      strategy: "exponential",
       shouldRetry: (error) => {
         if (error._tag === "FetchError") {
           return true;

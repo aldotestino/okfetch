@@ -3,7 +3,7 @@
 // the other example files. All shapes come from JSONPlaceholder and sse.dev.
 
 import { createEndpoints } from "@kanonic/fetch";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -73,13 +73,13 @@ export const endpoints = createEndpoints({
       path: "/todos/:id",
     },
     create: {
-      input: z.object({ title: z.string().min(1), userId: z.number() }),
+      body: z.object({ title: z.string().min(1), userId: z.number() }),
       method: "POST",
       output: todoSchema,
       path: "/todos",
     },
     update: {
-      input: z.object({ completed: z.boolean() }),
+      body: z.object({ completed: z.boolean() }),
       method: "PATCH",
       output: todoSchema,
       params: z.object({ id: z.number() }),
@@ -137,6 +137,6 @@ export const endpoints = createEndpoints({
     }),
     path: "/test",
     query: z.object({ interval: z.number().int() }),
-    stream: { enabled: true },
+    stream: true,
   },
 });

@@ -1,11 +1,3 @@
-// service.ts
-// Demonstrates the ApiService class pattern with:
-//   - endpoint and errorSchema baked in at class definition time
-//   - Result.gen for composing multiple API calls without nested error handling
-//   - a domain method that returns a single typed Result
-//
-// Run: bun run service.ts
-
 import { ApiService, validateClientErrors } from "@kanonic/fetch";
 import { Result } from "better-result";
 
@@ -14,8 +6,8 @@ import { apiErrorSchema, endpoints } from "./endpoints";
 // ─── Service definition ───────────────────────────────────────────────────────
 
 class BlogService extends ApiService(endpoints, apiErrorSchema) {
-  constructor(baseUrl: string) {
-    super({ baseUrl, shouldValidateError: validateClientErrors });
+  constructor(baseURL: string) {
+    super({ baseURL, shouldValidateError: validateClientErrors });
   }
 
   // Fetch a post, its comments, and its author in one typed operation.

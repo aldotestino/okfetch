@@ -1,4 +1,4 @@
-import type { Plugin } from "@kanonic/fetch";
+import type { KanonicPlugin } from "@kanonic/fetch";
 import pino from "pino";
 
 type LoggerOptions = {
@@ -10,8 +10,7 @@ export const logger = (options: LoggerOptions) => {
   const pinoLogger = pino(options.pinoOptions);
 
   return {
-    id: "logger",
-    name: "Logger",
+    name: "logger",
     version: "1.0.0",
     hooks: {
       async onRequest(ctx) {
@@ -29,12 +28,14 @@ export const logger = (options: LoggerOptions) => {
           pinoLogger.info(`Request succeeded with status ${response.status}`);
         }
       },
-      async onError(ctx, error) {
+      async onFail(_ctx, _response, error) {
         pinoLogger.error(`Request failed [${error._tag}] ${error.message}`);
       },
-      async onRetry() {
-        pinoLogger.warn(`Request failed, retrying...`);
+      async onRetry(_ctx, _response, error, attempt) {
+        pinoLogger.warn(
+          `Request failed [${error._tag}], retrying attempt ${attempt + 1}...`
+        );
       },
     },
-  } satisfies Plugin;
+  } satisfies KanonicPlugin;
 };
