@@ -1,4 +1,4 @@
-import type { ZodType } from "zod";
+import type { infer as Infer, ZodType } from "zod";
 
 import type {
   ApiError,
@@ -107,6 +107,16 @@ export type KanonicFetch = (
   init?: RequestInit
 ) => Promise<Response>;
 
+export type StreamChunkValue<Options extends KanonicOptions> =
+  Options["outputSchema"] extends ZodType
+    ? Infer<Options["outputSchema"]>
+    : unknown;
+
+export type KanonicSuccess<
+  Options extends KanonicOptions,
+  TRes = StreamChunkValue<Options>,
+> = Options["stream"] extends true ? ReadableStream<TRes> : TRes;
+
 export type KanonicPluginInitInput = {
   url: string;
   options: KanonicOptions;
@@ -202,7 +212,7 @@ export type KanonicOptions = Prettify<
     body?: unknown;
     fetch?: KanonicFetch;
     timeout?: number;
-    asStream?: boolean;
+    stream?: boolean;
     plugins?: KanonicPlugin[];
     /** Retry configuration. Supports "fixed", "linear" and "exponential" backoff strategies. */
     retry?: RetryOptions;

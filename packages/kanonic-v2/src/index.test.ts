@@ -1,10 +1,12 @@
 // oxlint-disable jest/no-conditional-in-test
 import { describe, expect, test } from "bun:test";
 
+import type { Result } from "better-result";
 import { z } from "zod/v4";
 
 import { ValidationError } from "./errors";
 import type {
+  KanonicError,
   KanonicFetch,
   KanonicPlugin,
   KanonicPluginInitInput,
@@ -24,6 +26,41 @@ const createRejectingFetch =
   async () => {
     throw new TypeError(message);
   };
+
+const createSSEStream = (chunks: (string | object)[]) => {
+  const encoder = new TextEncoder();
+
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) {
+        const data = typeof chunk === "string" ? chunk : JSON.stringify(chunk);
+        controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+      }
+      controller.close();
+    },
+  });
+};
+
+const collectStreamChunks = async <T>(
+  stream: ReadableStream<T>
+): Promise<T[]> => {
+  const chunks: T[] = [];
+  const reader = stream.getReader();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return chunks;
+};
 
 const createValidatorPlugin = (schemas: {
   body?: z.ZodType;
@@ -395,5 +432,95 @@ describe("kanonic v2 plugins", () => {
     expect(result.isErr()).toBe(true);
     expect(calls).toBe(2);
     expect(events).toEqual(["retry:0:true:FetchError"]);
+  });
+
+  test("stream returns ReadableStream of parsed chunks", async () => {
+    const mockFetch = createMockFetch(
+      () => new Response(createSSEStream(["hello", "world"]))
+    );
+    const options = {
+      fetch: mockFetch,
+      stream: true as const,
+    };
+
+    const result = await kanonic<string, unknown>(
+      "https://example.com/stream",
+      options
+    );
+
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      const chunks = await collectStreamChunks(result.value);
+      expect(chunks).toEqual(["hello", "world"]);
+    }
+  });
+
+  test("stream validates each chunk with output schema", async () => {
+    const mockFetch = createMockFetch(
+      () => new Response(createSSEStream([{ id: 1 }, { id: 2 }]))
+    );
+    const options = {
+      fetch: mockFetch,
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+      stream: true as const,
+    };
+
+    const result = await kanonic<{ id: number }, unknown>(
+      "https://example.com/stream",
+      options
+    );
+
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      const chunks = await collectStreamChunks(result.value);
+      expect(chunks).toEqual([{ id: 1 }, { id: 2 }]);
+    }
+  });
+
+  test("stream errors when a chunk does not match output schema", async () => {
+    const mockFetch = createMockFetch(
+      () => new Response(createSSEStream([{ id: 1 }, { id: "bad" }]))
+    );
+    const options = {
+      fetch: mockFetch,
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+      stream: true as const,
+    };
+
+    const result = await kanonic<{ id: number }, unknown>(
+      "https://example.com/stream",
+      options
+    );
+
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      const reader = result.value.getReader();
+      const firstChunk = await reader.read();
+      expect(firstChunk.value).toEqual({ id: 1 });
+      await expect(reader.read()).rejects.toMatchObject({
+        _tag: "ValidationError",
+        type: "output",
+      });
+      reader.releaseLock();
+    }
+  });
+
+  test("manual success generic works with stream and defaults error to unknown", () => {
+    const mockFetch = createMockFetch(
+      () => new Response(createSSEStream(["hello", "world"]))
+    );
+
+    const resultPromise: Promise<
+      Result<ReadableStream<string>, KanonicError<unknown>>
+    > = kanonic<string>("https://example.com/stream", {
+      fetch: mockFetch,
+      stream: true as const,
+    });
+
+    expect(resultPromise).toBeInstanceOf(Promise);
   });
 });

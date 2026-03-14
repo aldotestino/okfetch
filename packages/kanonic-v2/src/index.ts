@@ -12,13 +12,13 @@ import {
   ValidationError,
 } from "./errors";
 import type {
-  KanonicError,
   KanonicBody,
-  KanonicFetch,
+  KanonicError,
   KanonicOptions,
   KanonicPlugin,
   KanonicPluginInitInput,
   KanonicRequestContext,
+  KanonicSuccess,
   RetryableKanonicError,
 } from "./types";
 
@@ -39,6 +39,7 @@ export type {
   KanonicPluginHooks,
   KanonicPluginInitInput,
   KanonicRequestContext,
+  KanonicSuccess,
   RetryOptions,
 } from "./types";
 
@@ -46,6 +47,117 @@ const nonBodyMethods = new Set(["HEAD", "OPTIONS"]);
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+const extractDataLine = (line: string): string | null => {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("data:")) {
+    return null;
+  }
+
+  const dataContent = trimmed.slice(5).trim();
+  if (!dataContent || dataContent === "[DONE]") {
+    return null;
+  }
+
+  return dataContent;
+};
+
+const processStreamChunk = (
+  dataContent: string,
+  outputSchema?: ZodType
+): Result<unknown, ParseError | ValidationError> => {
+  if (!outputSchema) {
+    return Result.ok(dataContent);
+  }
+
+  const parsedJson = Result.try({
+    try: () => JSON.parse(dataContent),
+    catch: (error) =>
+      new ParseError({
+        message: "Failed to parse stream chunk as JSON",
+        cause: error,
+      }),
+  });
+  if (parsedJson.isErr()) {
+    return parsedJson;
+  }
+
+  const parsedChunk = outputSchema.safeParse(parsedJson.value);
+  if (!parsedChunk.success) {
+    return Result.err(
+      new ValidationError({
+        type: "output",
+        message: "Stream chunk did not match output schema",
+        zodError: parsedChunk.error,
+      })
+    );
+  }
+
+  return Result.ok(parsedChunk.data);
+};
+
+const createParsedStream = <TRes>(
+  responseBody: ReadableStream<Uint8Array>,
+  outputSchema?: ZodType
+): ReadableStream<TRes> => {
+  const reader = responseBody.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  return new ReadableStream<TRes>({
+    async cancel() {
+      await reader.cancel();
+    },
+    async pull(controller) {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          if (buffer.trim()) {
+            const lines = buffer.split("\n");
+            for (const line of lines) {
+              const dataContent = extractDataLine(line);
+              if (dataContent === null) {
+                continue;
+              }
+
+              const parsedChunk = processStreamChunk(dataContent, outputSchema);
+              if (parsedChunk.isErr()) {
+                controller.error(parsedChunk.error);
+                return;
+              }
+
+              controller.enqueue(parsedChunk.value as TRes);
+            }
+          }
+
+          controller.close();
+          return;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const dataContent = extractDataLine(line);
+          if (dataContent === null) {
+            continue;
+          }
+
+          const parsedChunk = processStreamChunk(dataContent, outputSchema);
+          if (parsedChunk.isErr()) {
+            controller.error(parsedChunk.error);
+            return;
+          }
+
+          controller.enqueue(parsedChunk.value as TRes);
+          return;
+        }
+      }
+    },
+  });
+};
 
 const isKanonicError = <TErr>(error: unknown): error is KanonicError<TErr> =>
   error instanceof FetchError ||
@@ -297,7 +409,6 @@ const buildRequestContext = (
   const signal = options.signal ?? controller.signal;
   const {
     apiErrorDataSchema: _apiErrorDataSchema,
-    asStream: _asStream,
     auth: _auth,
     baseURL: _baseURL,
     body: _rawBody,
@@ -310,6 +421,7 @@ const buildRequestContext = (
     plugins: _plugins,
     query: _query,
     retry: _retry,
+    stream: _stream,
     timeout: _timeout,
     _retryAttempt,
     ...requestInit
@@ -372,18 +484,44 @@ const shouldRetryError = (
     : isRetryableByDefault(error);
 };
 
-export const kanonic = async <
-  TRes extends Options["outputSchema"] extends ZodType
-    ? Infer<Options["outputSchema"]>
-    : unknown,
-  TErr extends Options["apiErrorDataSchema"] extends ZodType
-    ? Infer<Options["apiErrorDataSchema"]>
-    : unknown,
+export function kanonic<Options extends KanonicOptions = KanonicOptions>(
+  url: string,
+  options: Options
+): Promise<
+  Result<
+    KanonicSuccess<
+      Options,
+      Options["outputSchema"] extends ZodType
+        ? Infer<Options["outputSchema"]>
+        : unknown
+    >,
+    KanonicError<
+      Options["apiErrorDataSchema"] extends ZodType
+        ? Infer<Options["apiErrorDataSchema"]>
+        : unknown
+    >
+  >
+>;
+export function kanonic<TRes = unknown>(
+  url: string,
+  options: KanonicOptions & { stream: true }
+): Promise<Result<ReadableStream<TRes>, KanonicError<unknown>>>;
+export function kanonic<TRes = unknown, TErr = unknown>(
+  url: string,
+  options: KanonicOptions & { stream: true }
+): Promise<Result<ReadableStream<TRes>, KanonicError<TErr>>>;
+export function kanonic<TRes = unknown, TErr = unknown>(
+  url: string,
+  options: KanonicOptions
+): Promise<Result<TRes, KanonicError<TErr>>>;
+export async function kanonic<
+  TRes = unknown,
+  TErr = unknown,
   Options extends KanonicOptions = KanonicOptions,
 >(
   url: string,
   options: Options
-): Promise<Result<TRes, KanonicError<TErr>>> => {
+): Promise<Result<KanonicSuccess<Options, TRes>, KanonicError<TErr>>> {
   const plugins = options.plugins ?? [];
   const initResult = await runPluginInit(plugins, {
     url,
@@ -499,6 +637,103 @@ export const kanonic = async <
 
     const response = hookResponseResult.value;
 
+    if (resolvedOptions.stream) {
+      if (!response.ok) {
+        const textResult = await Result.tryPromise({
+          try: () => response.text(),
+          catch: (error) =>
+            new ParseError({
+              message: "Failed to read response body as text",
+              cause: error,
+            }),
+        });
+        if (textResult.isErr()) {
+          await runOnFail(plugins, currentContext, response, textResult.error);
+          return Result.err(textResult.error);
+        }
+
+        const text = textResult.value;
+        const apiErrorData = Result.try(() => JSON.parse(text)).unwrapOr({});
+
+        let apiError: ApiError<TErr>;
+        if (resolvedOptions.apiErrorDataSchema) {
+          const parsedApiErrorData =
+            resolvedOptions.apiErrorDataSchema.safeParse(apiErrorData);
+
+          if (!parsedApiErrorData.success) {
+            const validationError = new ValidationError({
+              message: "Failed to parse API error data with provided schema",
+              type: "error",
+              zodError: parsedApiErrorData.error,
+            });
+            await runOnFail(plugins, currentContext, response, validationError);
+            return Result.err(validationError);
+          }
+
+          apiError = new ApiError<TErr>({
+            statusCode: response.status,
+            statusText: response.statusText,
+            text,
+            data: parsedApiErrorData.data as TErr,
+          });
+        } else {
+          apiError = new ApiError<TErr>({
+            statusCode: response.status,
+            statusText: response.statusText,
+            text,
+          });
+        }
+
+        if (
+          retryOptions &&
+          shouldRetryError(apiError, {
+            ...resolvedOptions,
+            _retryAttempt: attempt,
+          })
+        ) {
+          await runOnRetry(
+            plugins,
+            currentContext,
+            response,
+            apiError,
+            attempt
+          );
+          const delay = computeRetryDelay(
+            { ...resolvedOptions, _retryAttempt: attempt },
+            attempt
+          );
+          if (delay > 0) {
+            await sleep(delay);
+          }
+          attempt += 1;
+          continue;
+        }
+
+        await runOnFail(plugins, currentContext, response, apiError);
+        return Result.err(apiError);
+      }
+
+      if (!response.body) {
+        const parseError = new ParseError({
+          message: "Response body is null",
+        });
+        await runOnFail(plugins, currentContext, response, parseError);
+        return Result.err(parseError);
+      }
+
+      const stream = createParsedStream<TRes>(
+        response.body as ReadableStream<Uint8Array>,
+        resolvedOptions.outputSchema
+      );
+      await runOnSuccess(
+        plugins,
+        currentContext,
+        response,
+        stream as KanonicSuccess<Options, TRes>
+      );
+      return Result.ok(stream as KanonicSuccess<Options, TRes>);
+    }
+
     const textResult = await Result.tryPromise({
       try: () => response.text(),
       catch: (error) =>
@@ -604,12 +839,17 @@ export const kanonic = async <
         plugins,
         currentContext,
         response,
-        parsedData.data as TRes
+        parsedData.data as KanonicSuccess<Options, TRes>
       );
-      return Result.ok(parsedData.data as TRes);
+      return Result.ok(parsedData.data as KanonicSuccess<Options, TRes>);
     }
 
-    await runOnSuccess(plugins, currentContext, response, data as TRes);
-    return Result.ok(data as TRes);
+    await runOnSuccess(
+      plugins,
+      currentContext,
+      response,
+      data as KanonicSuccess<Options, TRes>
+    );
+    return Result.ok(data as KanonicSuccess<Options, TRes>);
   }
-};
+}
