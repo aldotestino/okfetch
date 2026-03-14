@@ -127,12 +127,9 @@ const retried = await api.todos.get(
       attempts: 3,
       initialDelay: 200,
       strategy: "exponential",
-      shouldRetry: (error) => {
-        if (error._tag === "FetchError") {
-          return true;
-        }
-        return error.statusCode >= 500;
-      },
+      shouldRetry: (error) =>
+        error._tag === "FetchError" ||
+        (error._tag === "ApiError" && error.statusCode >= 500),
     },
   }
 );
