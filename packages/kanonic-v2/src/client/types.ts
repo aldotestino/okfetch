@@ -116,6 +116,9 @@ export type CreateApiOptions<
     baseURL: string;
     endpoints: TTree;
     errorSchema?: ZodType<TGlobalError>;
+    shouldValidateError?: (statusCode: number) => boolean;
+    validateInput?: boolean;
+    validateOutput?: boolean;
   }
 >;
 

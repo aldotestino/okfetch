@@ -434,6 +434,67 @@ describe("kanonic v2 plugins", () => {
     expect(events).toEqual(["retry:0:true:FetchError"]);
   });
 
+  test("shouldValidateError defaults to skipping error schema parsing", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ code: "NOPE" }, { status: 400 })
+    );
+
+    const result = await kanonic<unknown, { code: string }>(
+      "https://example.com/resource",
+      {
+        apiErrorDataSchema: z.object({ code: z.string() }),
+        fetch: mockFetch,
+      }
+    );
+
+    expect(result.isErr()).toBe(true);
+    if (result.isErr() && result.error._tag === "ApiError") {
+      expect(result.error.data).toBeUndefined();
+      expect(result.error.text).toContain("NOPE");
+    }
+  });
+
+  test("shouldValidateError parses typed error data when enabled", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ code: "NOPE" }, { status: 400 })
+    );
+
+    const result = await kanonic<unknown, { code: string }>(
+      "https://example.com/resource",
+      {
+        apiErrorDataSchema: z.object({ code: z.string() }),
+        fetch: mockFetch,
+        shouldValidateError: () => true,
+      }
+    );
+
+    expect(result.isErr()).toBe(true);
+    if (result.isErr() && result.error._tag === "ApiError") {
+      expect(result.error.data).toEqual({ code: "NOPE" });
+    }
+  });
+
+  test("shouldValidateError falls back to ApiError when validation fails", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ message: 42 }, { status: 400 })
+    );
+
+    const result = await kanonic<unknown, { message: string }>(
+      "https://example.com/resource",
+      {
+        apiErrorDataSchema: z.object({ message: z.string() }),
+        fetch: mockFetch,
+        shouldValidateError: () => true,
+      }
+    );
+
+    expect(result.isErr()).toBe(true);
+    if (result.isErr() && result.error._tag === "ApiError") {
+      expect(result.error.data).toBeUndefined();
+      expect(result.error.text).toContain("42");
+    }
+  });
+
   test("stream returns ReadableStream of parsed chunks", async () => {
     const mockFetch = createMockFetch(
       () => new Response(createSSEStream(["hello", "world"]))
@@ -506,6 +567,51 @@ describe("kanonic v2 plugins", () => {
         type: "output",
       });
       reader.releaseLock();
+    }
+  });
+
+  test("validateOutput false skips response schema validation", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ id: "unexpected-string" })
+    );
+
+    const result = await kanonic("https://example.com/resource", {
+      fetch: mockFetch,
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+      validateOutput: false,
+    });
+
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      const rawValue = result.value as unknown;
+      expect(rawValue).toEqual({ id: "unexpected-string" });
+    }
+  });
+
+  test("stream skips chunk schema validation when validateOutput is false", async () => {
+    const mockFetch = createMockFetch(
+      () => new Response(createSSEStream([{ id: 1 }, { id: "bad" }]))
+    );
+    const options = {
+      fetch: mockFetch,
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+      stream: true as const,
+      validateOutput: false,
+    };
+
+    const result = await kanonic<{ id: number | string }, unknown>(
+      "https://example.com/stream",
+      options
+    );
+
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      const chunks = await collectStreamChunks(result.value);
+      expect(chunks).toEqual([{ id: 1 }, { id: "bad" }]);
     }
   });
 

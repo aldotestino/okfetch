@@ -171,6 +171,7 @@ describe("kanonic v2 client helpers", () => {
       }),
       errorSchema: z.object({ message: z.string() }),
       fetch: mockFetch,
+      shouldValidateError: () => true,
     });
 
     const result = await api.user();
@@ -195,6 +196,7 @@ describe("kanonic v2 client helpers", () => {
       }),
       errorSchema: z.object({ message: z.string() }),
       fetch: mockFetch,
+      shouldValidateError: () => true,
     });
 
     const result = await api.me();
@@ -236,6 +238,37 @@ describe("kanonic v2 client helpers", () => {
     if (result.isErr()) {
       expect(result.error._tag).toBe("ValidationError");
     }
+  });
+
+  test("validateInput false skips injected endpoint validation", async () => {
+    let calls = 0;
+    const mockFetch = createMockFetch((request) => {
+      calls += 1;
+      expect(request.url).toBe("https://api.example.com/users/not-a-number");
+      return Response.json({ ok: true });
+    });
+
+    const api = createApi({
+      baseURL: "https://api.example.com",
+      endpoints: createEndpoints({
+        createUser: {
+          body: z.object({ name: z.string() }),
+          method: "POST",
+          params: z.object({ id: z.number() }),
+          path: "/users/:id",
+        },
+      }),
+      fetch: mockFetch,
+      validateInput: false,
+    });
+
+    const result = await api.createUser({
+      body: { name: 123 } as unknown as { name: string },
+      params: { id: "not-a-number" } as unknown as { id: number },
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(calls).toBe(1);
   });
 
   test("global plugins run alongside injected validation plugin", async () => {
@@ -301,6 +334,57 @@ describe("kanonic v2 client helpers", () => {
     if (result.isOk()) {
       const chunks = await collectStreamChunks(result.value);
       expect(chunks).toEqual([{ id: 1 }, { id: 2 }]);
+    }
+  });
+
+  test("validateOutput false skips endpoint output validation", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ id: "unexpected-string" })
+    );
+
+    const api = createApi({
+      baseURL: "https://api.example.com",
+      endpoints: createEndpoints({
+        user: {
+          method: "GET",
+          output: z.object({ id: z.number() }),
+          path: "/user",
+        },
+      }),
+      fetch: mockFetch,
+      validateOutput: false,
+    });
+
+    const result = await api.user();
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      const rawValue = result.value as unknown;
+      expect(rawValue).toEqual({ id: "unexpected-string" });
+    }
+  });
+
+  test("shouldValidateError controls global error schema parsing", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ message: "No access" }, { status: 401 })
+    );
+
+    const api = createApi({
+      baseURL: "https://api.example.com",
+      endpoints: createEndpoints({
+        me: {
+          method: "GET",
+          path: "/me",
+        },
+      }),
+      errorSchema: z.object({ message: z.string() }),
+      fetch: mockFetch,
+    });
+
+    const result = await api.me();
+    expect(result.isErr()).toBe(true);
+    if (result.isErr() && result.error._tag === "ApiError") {
+      expect(result.error.data).toBeUndefined();
+      expect(result.error.text).toContain("No access");
     }
   });
 

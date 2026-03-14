@@ -18,11 +18,16 @@ const isEndpoint = (
   typeof (value as EndpointDefinition).method === "string";
 
 const createValidationPlugin = (
-  endpoint: EndpointDefinition
+  endpoint: EndpointDefinition,
+  enabled: boolean
 ): KanonicPlugin => ({
   name: "kanonic-endpoint-validator",
   version: "1.0.0",
   init: ({ options, url }) => {
+    if (!enabled) {
+      return { options, url };
+    }
+
     if (endpoint.params) {
       const paramsResult = endpoint.params.safeParse(options.params ?? {});
       if (!paramsResult.success) {
@@ -71,7 +76,15 @@ const buildEndpointFn = <TEndpoint extends EndpointDefinition, TGlobalError>(
   baseURL: string,
   endpoint: TEndpoint,
   globalDefaults: EndpointRequestOverrides,
-  globalErrorSchema: CreateApiOptions<EndpointTree, TGlobalError>["errorSchema"]
+  globalErrorSchema: CreateApiOptions<
+    EndpointTree,
+    TGlobalError
+  >["errorSchema"],
+  validateInput: boolean,
+  validateOutput: boolean | undefined,
+  shouldValidateError:
+    | CreateApiOptions<EndpointTree, TGlobalError>["shouldValidateError"]
+    | undefined
 ): EndpointFunction<TEndpoint, TGlobalError> => {
   const hasSchemaOptions =
     endpoint.body !== undefined ||
@@ -124,13 +137,15 @@ const buildEndpointFn = <TEndpoint extends EndpointDefinition, TGlobalError>(
       outputSchema: endpoint.output,
       params: payload.params,
       plugins: [
-        createValidationPlugin(endpoint),
+        createValidationPlugin(endpoint, validateInput),
         ...(globalPlugins ?? []),
         ...(endpointPlugins ?? []),
         ...(overridePlugins ?? []),
       ],
       query: payload.query,
+      shouldValidateError,
       stream: endpoint.stream,
+      validateOutput,
     };
 
     return kanonic(options.stream ? endpoint.path : endpoint.path, options);
@@ -143,18 +158,34 @@ const buildClientNode = <TTree extends EndpointTree, TGlobalError>(
   tree: TTree,
   baseURL: string,
   globalDefaults: EndpointRequestOverrides,
-  globalErrorSchema: CreateApiOptions<TTree, TGlobalError>["errorSchema"]
+  globalErrorSchema: CreateApiOptions<TTree, TGlobalError>["errorSchema"],
+  validateInput: boolean,
+  validateOutput: boolean | undefined,
+  shouldValidateError:
+    | CreateApiOptions<TTree, TGlobalError>["shouldValidateError"]
+    | undefined
 ): ApiClient<TTree, TGlobalError> => {
   const node: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(tree)) {
     node[key] = isEndpoint(value)
-      ? buildEndpointFn(baseURL, value, globalDefaults, globalErrorSchema)
+      ? buildEndpointFn(
+          baseURL,
+          value,
+          globalDefaults,
+          globalErrorSchema,
+          validateInput,
+          validateOutput,
+          shouldValidateError
+        )
       : buildClientNode(
           value as EndpointTree,
           baseURL,
           globalDefaults,
-          globalErrorSchema
+          globalErrorSchema,
+          validateInput,
+          validateOutput,
+          shouldValidateError
         );
   }
 
@@ -165,13 +196,19 @@ export const createApi = <TTree extends EndpointTree, TGlobalError = unknown>({
   baseURL,
   endpoints,
   errorSchema,
+  shouldValidateError,
+  validateInput = true,
+  validateOutput,
   ...globalDefaults
 }: CreateApiOptions<TTree, TGlobalError>): ApiClient<TTree, TGlobalError> =>
   buildClientNode(
     endpoints,
     baseURL,
     globalDefaults as EndpointRequestOverrides,
-    errorSchema
+    errorSchema,
+    validateInput,
+    validateOutput,
+    shouldValidateError
   );
 
 export const createEndpoints = <TTree extends EndpointTree>(endpoints: TTree) =>

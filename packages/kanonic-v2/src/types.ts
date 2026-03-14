@@ -213,6 +213,8 @@ export type KanonicOptions = Prettify<
     fetch?: KanonicFetch;
     timeout?: number;
     stream?: boolean;
+    validateOutput?: boolean;
+    shouldValidateError?: (statusCode: number) => boolean;
     plugins?: KanonicPlugin[];
     /** Retry configuration. Supports "fixed", "linear" and "exponential" backoff strategies. */
     retry?: RetryOptions;

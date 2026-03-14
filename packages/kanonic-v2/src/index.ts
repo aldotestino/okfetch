@@ -75,7 +75,8 @@ const extractDataLine = (line: string): string | null => {
 
 const processStreamChunk = (
   dataContent: string,
-  outputSchema?: ZodType
+  outputSchema?: ZodType,
+  validateOutput = true
 ): Result<unknown, ParseError | ValidationError> => {
   if (!outputSchema) {
     return Result.ok(dataContent);
@@ -91,6 +92,10 @@ const processStreamChunk = (
   });
   if (parsedJson.isErr()) {
     return parsedJson;
+  }
+
+  if (!validateOutput) {
+    return Result.ok(parsedJson.value);
   }
 
   const parsedChunk = outputSchema.safeParse(parsedJson.value);
@@ -109,7 +114,8 @@ const processStreamChunk = (
 
 const createParsedStream = <TRes>(
   responseBody: ReadableStream<Uint8Array>,
-  outputSchema?: ZodType
+  outputSchema?: ZodType,
+  validateOutput = true
 ): ReadableStream<TRes> => {
   const reader = responseBody.getReader();
   const decoder = new TextDecoder();
@@ -132,7 +138,11 @@ const createParsedStream = <TRes>(
                 continue;
               }
 
-              const parsedChunk = processStreamChunk(dataContent, outputSchema);
+              const parsedChunk = processStreamChunk(
+                dataContent,
+                outputSchema,
+                validateOutput
+              );
               if (parsedChunk.isErr()) {
                 controller.error(parsedChunk.error);
                 return;
@@ -156,7 +166,11 @@ const createParsedStream = <TRes>(
             continue;
           }
 
-          const parsedChunk = processStreamChunk(dataContent, outputSchema);
+          const parsedChunk = processStreamChunk(
+            dataContent,
+            outputSchema,
+            validateOutput
+          );
           if (parsedChunk.isErr()) {
             controller.error(parsedChunk.error);
             return;
@@ -433,6 +447,8 @@ const buildRequestContext = (
     query: _query,
     retry: _retry,
     stream: _stream,
+    validateOutput: _validateOutput,
+    shouldValidateError: _shouldValidateError,
     timeout: _timeout,
     _retryAttempt,
     ...requestInit
@@ -494,6 +510,13 @@ const shouldRetryError = (
     ? retry.shouldRetry(error)
     : isRetryableByDefault(error);
 };
+
+const shouldValidateErrorResponse = (
+  options: KanonicOptions,
+  statusCode: number
+): boolean =>
+  options.apiErrorDataSchema !== undefined &&
+  (options.shouldValidateError?.(statusCode) ?? false);
 
 export function kanonic<Options extends KanonicOptions = KanonicOptions>(
   url: string,
@@ -664,35 +687,31 @@ export async function kanonic<
         }
 
         const text = textResult.value;
-        const apiErrorData = Result.try(() => JSON.parse(text)).unwrapOr({});
+        let apiError = new ApiError<TErr>({
+          statusCode: response.status,
+          statusText: response.statusText,
+          text,
+        });
 
-        let apiError: ApiError<TErr>;
-        if (resolvedOptions.apiErrorDataSchema) {
-          const parsedApiErrorData =
-            resolvedOptions.apiErrorDataSchema.safeParse(apiErrorData);
-
-          if (!parsedApiErrorData.success) {
-            const validationError = new ValidationError({
-              message: "Failed to parse API error data with provided schema",
-              type: "error",
-              zodError: parsedApiErrorData.error,
-            });
-            await runOnFail(plugins, currentContext, response, validationError);
-            return Result.err(validationError);
+        if (shouldValidateErrorResponse(resolvedOptions, response.status)) {
+          const apiErrorDataResult = Result.try({
+            try: () => JSON.parse(text),
+            catch: (error) => error,
+          });
+          if (apiErrorDataResult.isOk()) {
+            const parsedApiErrorData =
+              resolvedOptions.apiErrorDataSchema?.safeParse(
+                apiErrorDataResult.value
+              );
+            if (parsedApiErrorData?.success) {
+              apiError = new ApiError<TErr>({
+                statusCode: response.status,
+                statusText: response.statusText,
+                text,
+                data: parsedApiErrorData.data as TErr,
+              });
+            }
           }
-
-          apiError = new ApiError<TErr>({
-            statusCode: response.status,
-            statusText: response.statusText,
-            text,
-            data: parsedApiErrorData.data as TErr,
-          });
-        } else {
-          apiError = new ApiError<TErr>({
-            statusCode: response.status,
-            statusText: response.statusText,
-            text,
-          });
         }
 
         if (
@@ -734,7 +753,8 @@ export async function kanonic<
 
       const stream = createParsedStream<TRes>(
         response.body as ReadableStream<Uint8Array>,
-        resolvedOptions.outputSchema
+        resolvedOptions.outputSchema,
+        resolvedOptions.validateOutput ?? true
       );
       await runOnSuccess(
         plugins,
@@ -760,40 +780,31 @@ export async function kanonic<
     const text = textResult.value;
 
     if (!response.ok) {
-      const apiErrorData = Result.try(() => JSON.parse(text)).unwrapOr({});
+      let apiError = new ApiError<TErr>({
+        statusCode: response.status,
+        statusText: response.statusText,
+        text,
+      });
 
-      let apiError: ApiError<TErr>;
-      if (resolvedOptions.apiErrorDataSchema) {
-        const parsedApiErrorData =
-          resolvedOptions.apiErrorDataSchema.safeParse(apiErrorData);
-
-        if (!parsedApiErrorData.success) {
-          const validationError = new ValidationError({
-            message: "Failed to parse API error data with provided schema",
-            type: "error",
-            zodError: parsedApiErrorData.error,
-          });
-          await runOnFail(
-            plugins,
-            currentContext,
-            response,
-            validationError as KanonicError<TErr>
-          );
-          return Result.err(validationError);
+      if (shouldValidateErrorResponse(resolvedOptions, response.status)) {
+        const apiErrorDataResult = Result.try({
+          try: () => JSON.parse(text),
+          catch: (error) => error,
+        });
+        if (apiErrorDataResult.isOk()) {
+          const parsedApiErrorData =
+            resolvedOptions.apiErrorDataSchema?.safeParse(
+              apiErrorDataResult.value
+            );
+          if (parsedApiErrorData?.success) {
+            apiError = new ApiError<TErr>({
+              statusCode: response.status,
+              statusText: response.statusText,
+              text,
+              data: parsedApiErrorData.data as TErr,
+            });
+          }
         }
-
-        apiError = new ApiError<TErr>({
-          statusCode: response.status,
-          statusText: response.statusText,
-          text,
-          data: parsedApiErrorData.data as TErr,
-        });
-      } else {
-        apiError = new ApiError<TErr>({
-          statusCode: response.status,
-          statusText: response.statusText,
-          text,
-        });
       }
 
       if (
@@ -833,7 +844,10 @@ export async function kanonic<
     }
     const data = dataResult.value;
 
-    if (resolvedOptions.outputSchema) {
+    if (
+      resolvedOptions.outputSchema &&
+      (resolvedOptions.validateOutput ?? true)
+    ) {
       const parsedData = resolvedOptions.outputSchema.safeParse(data);
 
       if (!parsedData.success) {
