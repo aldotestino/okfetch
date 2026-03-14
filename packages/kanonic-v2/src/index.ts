@@ -42,6 +42,17 @@ export type {
   KanonicSuccess,
   RetryOptions,
 } from "./types";
+export { ApiService, createApi, createEndpoints } from "./client";
+export type {
+  ApiErrors,
+  ApiClient,
+  CreateApiOptions,
+  Endpoint,
+  EndpointCallOptions,
+  EndpointFunction,
+  EndpointRequestOverrides,
+  EndpointTree,
+} from "./client";
 
 const nonBodyMethods = new Set(["HEAD", "OPTIONS"]);
 
