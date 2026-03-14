@@ -14,6 +14,7 @@ import {
 import type {
   KanonicError,
   KanonicBody,
+  KanonicFetch,
   KanonicOptions,
   KanonicPlugin,
   KanonicPluginInitInput,
@@ -32,6 +33,7 @@ export {
 export type {
   KanonicBody,
   KanonicError,
+  KanonicFetch,
   KanonicOptions,
   KanonicPlugin,
   KanonicPluginHooks,
@@ -274,7 +276,9 @@ const buildRequestContext = (
     headers.has("Content-Type") &&
     headers.get("Content-Type")?.includes("x-www-form-urlencoded")
   ) {
-    body = new URLSearchParams(options.body).toString();
+    body = new URLSearchParams(
+      options.body as Record<string, string | readonly string[]>
+    ).toString();
   } else if (
     options.body instanceof FormData ||
     options.body instanceof URLSearchParams ||
@@ -298,6 +302,7 @@ const buildRequestContext = (
     baseURL: _baseURL,
     body: _rawBody,
     errorSchema: _errorSchema,
+    fetch: _fetch,
     headers: _headers,
     method: _method,
     outputSchema: _outputSchema,
@@ -392,6 +397,7 @@ export const kanonic = async <
   const resolvedUrl = initResult.value.url;
   const resolvedOptions = initResult.value.options;
   const requestContext = buildRequestContext(resolvedUrl, resolvedOptions);
+  const fetchImplementation = resolvedOptions.fetch ?? globalThis.fetch;
   const retryOptions = resolvedOptions.retry;
   let attempt = resolvedOptions._retryAttempt ?? 0;
 
@@ -421,7 +427,7 @@ export const kanonic = async <
 
     const { url: currentUrl, ...fetchInit } = currentContext;
     const responseResult = await Result.tryPromise({
-      try: () => fetch(currentUrl, fetchInit),
+      try: () => fetchImplementation(currentUrl, fetchInit),
       catch: (error) => {
         if (
           error instanceof DOMException &&

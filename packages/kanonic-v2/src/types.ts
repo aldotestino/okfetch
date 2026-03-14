@@ -101,15 +101,11 @@ export type RetryOptions =
   | LinearRetryOptions
   | ExponentialRetryOptions;
 
-export type KanonicBody =
-  | string
-  | FormData
-  | URLSearchParams
-  | Blob
-  | ArrayBuffer
-  | ArrayBufferView
-  | ReadableStream<Uint8Array>
-  | null;
+export type KanonicBody = Exclude<RequestInit["body"], undefined>;
+export type KanonicFetch = (
+  input: string | URL | Request,
+  init?: RequestInit
+) => Promise<Response>;
 
 export type KanonicPluginInitInput = {
   url: string;
@@ -204,6 +200,7 @@ export type KanonicOptions = Prettify<
       string | number | boolean | Array<string | number | boolean>
     >;
     body?: unknown;
+    fetch?: KanonicFetch;
     timeout?: number;
     asStream?: boolean;
     plugins?: KanonicPlugin[];

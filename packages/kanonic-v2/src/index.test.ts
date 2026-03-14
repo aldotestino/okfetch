@@ -1,24 +1,29 @@
 // oxlint-disable jest/no-conditional-in-test
-import { beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import { z } from "zod/v4";
 
 import { ValidationError } from "./errors";
-import type { KanonicPlugin, KanonicPluginInitInput } from "./index";
+import type {
+  KanonicFetch,
+  KanonicPlugin,
+  KanonicPluginInitInput,
+} from "./index";
 import { kanonic } from "./index";
 
-const stubFetch = (
-  handler: (request: Request) => Response | Promise<Response>
-): void => {
-  globalThis.fetch = async (
-    input: string | URL | Request,
-    init?: RequestInit
-  ): Promise<Response> => {
+const createMockFetch =
+  (handler: (request: Request) => Response | Promise<Response>): KanonicFetch =>
+  async (input: string | URL | Request, init?: RequestInit) => {
     const request =
       input instanceof Request ? input : new Request(String(input), init);
     return handler(request);
   };
-};
+
+const createRejectingFetch =
+  (message: string): KanonicFetch =>
+  async () => {
+    throw new TypeError(message);
+  };
 
 const createValidatorPlugin = (schemas: {
   body?: z.ZodType;
@@ -66,23 +71,20 @@ const createValidatorPlugin = (schemas: {
 });
 
 describe("kanonic v2 plugins", () => {
-  beforeEach(() => {
-    globalThis.fetch = fetch;
-  });
-
   test("executes init hooks in order and rewrites raw url and options", async () => {
     let finalInput: KanonicPluginInitInput | undefined;
     let requestUrl = "";
     let requestHeader = "";
 
-    stubFetch((request) => {
+    const mockFetch = createMockFetch((request) => {
       requestUrl = request.url;
       requestHeader = request.headers.get("x-init") ?? "";
       return Response.json({ ok: true });
     });
 
-    const result = await kanonic<{ ok: boolean }>("/todos/:id", {
+    const result = await kanonic<{ ok: boolean }, unknown>("/todos/:id", {
       baseURL: "https://api.example.com",
+      fetch: mockFetch,
       headers: { "x-start": "yes" },
       params: { id: 1 },
       plugins: [
@@ -128,13 +130,14 @@ describe("kanonic v2 plugins", () => {
     const seen: string[] = [];
     let authHeader = "";
 
-    stubFetch((request) => {
+    const mockFetch = createMockFetch((request) => {
       authHeader = request.headers.get("authorization") ?? "";
       return Response.json({ ok: true });
     });
 
-    const result = await kanonic<{ ok: boolean }>("/resource", {
+    const result = await kanonic<{ ok: boolean }, unknown>("/resource", {
       baseURL: "https://api.example.com",
+      fetch: mockFetch,
       plugins: [
         {
           name: "first",
@@ -153,6 +156,7 @@ describe("kanonic v2 plugins", () => {
           hooks: {
             onRequest: (context) => {
               seen.push(context.headers.get("authorization") ?? "");
+              return context;
             },
           },
         },
@@ -165,10 +169,11 @@ describe("kanonic v2 plugins", () => {
   });
 
   test("onResponse can replace the response used for parsing", async () => {
-    stubFetch(() => Response.json({ ok: false }));
+    const mockFetch = createMockFetch(() => Response.json({ ok: false }));
 
-    const result = await kanonic<{ ok: boolean }>("/resource", {
+    const result = await kanonic<{ ok: boolean }, unknown>("/resource", {
       baseURL: "https://api.example.com",
+      fetch: mockFetch,
       plugins: [
         {
           name: "replace-response",
@@ -192,8 +197,23 @@ describe("kanonic v2 plugins", () => {
   test("onSuccess fires once after retries eventually succeed", async () => {
     let attempts = 0;
     const events: string[] = [];
+    const observerPlugin: KanonicPlugin = {
+      name: "observer",
+      version: "1.0.0",
+      hooks: {
+        onRetry: (_context, response, error, attempt) => {
+          events.push(
+            `retry:${attempt}:${response?.status ?? "none"}:${error._tag}`
+          );
+        },
+        onSuccess: (_context, response, data) => {
+          const parsedData = data as { ok: boolean };
+          events.push(`success:${response.status}:${String(parsedData.ok)}`);
+        },
+      },
+    };
 
-    stubFetch(() => {
+    const mockFetch = createMockFetch(() => {
       attempts += 1;
       if (attempts < 3) {
         return new Response("boom", { status: 503, statusText: "Unavailable" });
@@ -202,24 +222,10 @@ describe("kanonic v2 plugins", () => {
       return Response.json({ ok: true });
     });
 
-    const result = await kanonic<{ ok: boolean }>("/resource", {
+    const result = await kanonic<{ ok: boolean }, unknown>("/resource", {
       baseURL: "https://api.example.com",
-      plugins: [
-        {
-          name: "observer",
-          version: "1.0.0",
-          hooks: {
-            onRetry: (_context, response, error, attempt) => {
-              events.push(
-                `retry:${attempt}:${response?.status ?? "none"}:${error._tag}`
-              );
-            },
-            onSuccess: (_context, response, data) => {
-              events.push(`success:${response.status}:${String(data.ok)}`);
-            },
-          },
-        },
-      ],
+      fetch: mockFetch,
+      plugins: [observerPlugin],
       retry: {
         strategy: "fixed",
         attempts: 2,
@@ -236,13 +242,10 @@ describe("kanonic v2 plugins", () => {
 
   test("onFail fires once on terminal transport failure with no response", async () => {
     const events: string[] = [];
-    const originalFetch = globalThis.fetch;
-
-    globalThis.fetch = async () => {
-      throw new TypeError("network down");
-    };
+    const mockFetch = createRejectingFetch("network down");
 
     const result = await kanonic("https://example.com", {
+      fetch: mockFetch,
       plugins: [
         {
           name: "observer",
@@ -256,17 +259,16 @@ describe("kanonic v2 plugins", () => {
       ],
     });
 
-    globalThis.fetch = originalFetch;
-
     expect(result.isErr()).toBe(true);
     expect(events).toEqual(["fail:true:FetchError"]);
   });
 
   test("side-effect hook failures are swallowed", async () => {
-    stubFetch(() => Response.json({ ok: true }));
+    const mockFetch = createMockFetch(() => Response.json({ ok: true }));
 
-    const result = await kanonic<{ ok: boolean }>("/resource", {
+    const result = await kanonic<{ ok: boolean }, unknown>("/resource", {
       baseURL: "https://api.example.com",
+      fetch: mockFetch,
       plugins: [
         {
           name: "noisy",
@@ -297,7 +299,7 @@ describe("kanonic v2 plugins", () => {
     });
 
     expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
+    if (result.isErr() && result.error._tag === "PluginError") {
       expect(result.error._tag).toBe("PluginError");
       expect(result.error.pluginName).toBe("broken");
       expect(result.error.hook).toBe("init");
@@ -329,7 +331,7 @@ describe("kanonic v2 plugins", () => {
     });
 
     expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
+    if (result.isErr() && result.error._tag === "ValidationError") {
       expect(result.error._tag).toBe("ValidationError");
       expect(result.error.type).toBe("query");
     }
@@ -337,15 +339,14 @@ describe("kanonic v2 plugins", () => {
 
   test("validator plugins can short-circuit before fetch", async () => {
     let calls = 0;
-    const originalFetch = globalThis.fetch;
-
-    globalThis.fetch = async (...args) => {
+    const mockFetch = createMockFetch(() => {
       calls += 1;
-      return originalFetch(...args);
-    };
+      return Response.json({ ok: true });
+    });
 
     const result = await kanonic("https://example.com/todos/:id", {
       body: { title: 42 },
+      fetch: mockFetch,
       params: { id: "bad" },
       plugins: [
         createValidatorPlugin({
@@ -354,8 +355,6 @@ describe("kanonic v2 plugins", () => {
         }),
       ],
     });
-
-    globalThis.fetch = originalFetch;
 
     expect(result.isErr()).toBe(true);
     expect(calls).toBe(0);
@@ -366,15 +365,14 @@ describe("kanonic v2 plugins", () => {
 
   test("onRetry receives undefined response on transport failures", async () => {
     const events: string[] = [];
-    const originalFetch = globalThis.fetch;
     let calls = 0;
-
-    globalThis.fetch = async () => {
+    const mockFetch = createMockFetch(() => {
       calls += 1;
       throw new TypeError("offline");
-    };
+    });
 
     const result = await kanonic("https://example.com", {
+      fetch: mockFetch,
       plugins: [
         {
           name: "observer",
@@ -393,8 +391,6 @@ describe("kanonic v2 plugins", () => {
         attempts: 1,
       },
     });
-
-    globalThis.fetch = originalFetch;
 
     expect(result.isErr()).toBe(true);
     expect(calls).toBe(2);
