@@ -10,6 +10,12 @@
 
     // Bundler mode
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@kanonic/api": ["./packages/api/src/index.ts"],
+      "@kanonic/fetch": ["./packages/fetch/src/index.ts"],
+      "@kanonic/logger": ["./packages/logger/index.ts"]
+    },
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,

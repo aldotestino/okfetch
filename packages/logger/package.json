@@ -1,8 +1,23 @@
 {
   "name": "@kanonic/logger",
-  "private": true,
+  "version": "0.0.0",
+  "description": "A pino-based logging plugin for kanonic request lifecycles.",
+  "license": "MIT",
+  "files": [
+    "index.ts"
+  ],
   "type": "module",
-  "module": "index.ts",
+  "sideEffects": false,
+  "main": "./index.ts",
+  "module": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts",
+      "default": "./index.ts"
+    }
+  },
   "dependencies": {
     "pino": "^10.3.1"
   },
@@ -11,6 +26,8 @@
     "@types/bun": "latest"
   },
   "peerDependencies": {
+    "@kanonic/fetch": "*",
+    "pino": "^10.3.1",
     "typescript": "^5"
   }
 }

@@ -2,14 +2,15 @@
   "name": "@kanonic/app",
   "private": true,
   "type": "module",
-  "module": "endpoints.ts",
+  "module": "index.ts",
   "scripts": {
-    "client": "bun run client.ts",
-    "service": "bun run service.ts",
-    "stream": "bun run stream.ts"
+    "dev": "bun run index.ts",
+    "start": "bun run index.ts"
   },
   "dependencies": {
+    "@kanonic/api": "workspace:*",
     "@kanonic/fetch": "workspace:*",
+    "@kanonic/logger": "workspace:*",
     "better-result": "^2.7.0",
     "zod": "^4.3.5"
   },
