@@ -1,5 +1,5 @@
+import type { KanonicError, KanonicOptions } from "@kanonic/fetch";
 import type { Result } from "better-result";
-import type { KanonicError, KanonicOptions } from "packages/fetch/src";
 import type { infer as Infer, ZodType } from "zod/v4";
 
 export type EndpointRequestOverrides = Omit<

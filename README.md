@@ -2,45 +2,73 @@
 
 # kanonic
 
-`kanonic` is a type-safe wrapper around `fetch` with Zod validation and `Result`-based error handling.
+`kanonic` is a small family of TypeScript-first HTTP packages built around one idea: make `fetch` safer and more composable without hiding how the web platform works.
 
-It gives you two layers:
+The repo is split into focused packages:
 
-- `kanonic(url, options)` for one-off requests
-- `@kanonic/api` for typed API clients generated from schemas
+- `@kanonic/fetch` for direct typed requests with validation, retries, plugins, timeouts, auth, and streaming
+- `@kanonic/api` for schema-defined endpoint trees that generate a typed API client
+- `@kanonic/logger` for a ready-made `pino` plugin you can drop into request flows
 
-Every request returns a `Result`, so success and failure stay explicit without relying on thrown exceptions in normal control flow.
+All request execution is based on [`better-result`](https://github.com/dmmulroy/better-result), so success and failure stay explicit as data instead of being pushed into exception-based control flow.
+
+## Packages
+
+| Package           | What it does                                                       | Best for                                                 |
+| ----------------- | ------------------------------------------------------------------ | -------------------------------------------------------- |
+| `@kanonic/fetch`  | Direct `fetch` wrapper with runtime validation and lifecycle hooks | Low-level requests and shared transport config           |
+| `@kanonic/api`    | Typed API client generated from endpoint definitions               | Larger applications with repeated API calls              |
+| `@kanonic/logger` | `pino`-based plugin for kanonic hooks                              | Request/response logging without writing your own plugin |
+
+Package-level docs:
+
+- [packages/fetch/README.md](/Users/aldotestino/Developer/kanonic/packages/fetch/README.md)
+- [packages/api/README.md](/Users/aldotestino/Developer/kanonic/packages/api/README.md)
+- [packages/logger/README.md](/Users/aldotestino/Developer/kanonic/packages/logger/README.md)
+
+## Why kanonic
+
+- Validate response payloads with Zod before they reach business logic
+- Validate endpoint `body`, `params`, and `query` before a request is sent
+- Handle transport and API failures with typed `Result` values
+- Reuse cross-cutting concerns through plugins instead of ad hoc wrappers
+- Add retries, auth, timeouts, and streaming without giving up standard `fetch`
 
 ## Installation
 
+### Direct fetch usage
+
 ```bash
-bun add @kanonic/fetch zod better-result
+bun add @kanonic/fetch better-result zod
 ```
 
 ```bash
-npm install @kanonic/fetch zod better-result
+npm install @kanonic/fetch better-result zod
 ```
 
-If you want the typed client builder too:
+### Typed API client usage
 
 ```bash
-bun add @kanonic/api @kanonic/fetch
+bun add @kanonic/api @kanonic/fetch better-result zod
 ```
 
 ```bash
-npm install @kanonic/api @kanonic/fetch
+npm install @kanonic/api @kanonic/fetch better-result zod
 ```
 
-## Why use it
+### Logging plugin
 
-- Validate request input and response output with Zod
-- Generate typed client methods from a single endpoint tree
-- Handle failures as data with `Result`
-- Add retries, timeouts, auth, plugins, and streaming on top of standard `fetch`
+```bash
+bun add @kanonic/logger @kanonic/fetch pino
+```
+
+```bash
+npm install @kanonic/logger @kanonic/fetch pino
+```
 
 ## Quick Start
 
-### Direct request
+### 1. Direct requests with `@kanonic/fetch`
 
 ```ts
 import { kanonic } from "@kanonic/fetch";
@@ -63,7 +91,7 @@ result.match({
 });
 ```
 
-### Typed client
+### 2. Typed clients with `@kanonic/api`
 
 ```ts
 import { createApi, createEndpoints } from "@kanonic/api";
@@ -104,79 +132,98 @@ const api = createApi({
 const result = await api.todos.get({ params: { id: 1 } });
 ```
 
-Endpoint methods use:
+### 3. Logging with `@kanonic/logger`
 
-- the first argument for schema-backed `body`, `params`, and `query`
-- the optional second argument for overrides like `headers`, `timeout`, `retry`, `signal`, `fetch`, and `plugins`
+```ts
+import { kanonic } from "@kanonic/fetch";
+import { logger } from "@kanonic/logger";
 
-Endpoints without request schemas accept only the override argument.
-
-## Example App
-
-The example app is intentionally small and lives in one file:
-
-```bash
-bun run --cwd examples/app dev
+const result = await kanonic("https://example.com/health", {
+  plugins: [logger()],
+});
 ```
 
-It demonstrates:
+## How The Packages Fit Together
 
-- one direct `kanonic(...)` request
-- one generated typed client
-- one validation error caught before a network call is sent
+`@kanonic/fetch` is the transport core. It owns request execution, retries, streaming support, auth, plugin execution, timeout behavior, and parsing.
 
-See [examples/app/index.ts](/Users/aldotestino/Developer/kanonic/examples/app/index.ts).
+`@kanonic/api` sits on top of `@kanonic/fetch`. It turns endpoint definitions into typed client methods and injects request validation based on the schemas attached to each endpoint.
+
+`@kanonic/logger` is optional sugar. It is just a plugin package built on the public `KanonicPlugin` interface from `@kanonic/fetch`.
 
 ## Core Concepts
 
+### `Result` instead of thrown request errors
+
+Both direct requests and generated client calls resolve to a `Result`.
+
+That means callers can use `.isOk()`, `.isErr()`, `.map()`, `.match()`, and other `better-result` helpers instead of relying on `try/catch` for expected HTTP and validation failures.
+
 ### Validation
 
-`createApi` validates endpoint `body`, `params`, and `query` by default. Response validation is controlled with `validateOutput`.
+`@kanonic/fetch` can validate:
 
-To validate structured API error bodies, pass an `errorSchema` and optionally control when it runs with `shouldValidateError`.
+- successful response bodies with `outputSchema`
+- structured API error payloads with `apiErrorDataSchema`
+- stream chunks when `stream: true` is enabled
 
-Helpers are included:
+`@kanonic/api` adds request-side validation for:
+
+- `body`
+- `params`
+- `query`
+
+Helpers from `@kanonic/fetch`:
 
 ```ts
 import { validateAllErrors, validateClientErrors } from "@kanonic/fetch";
 ```
 
-- `validateClientErrors` validates only `4xx`
-- `validateAllErrors` validates `4xx` and `5xx`
+- `validateClientErrors` validates only `4xx` responses
+- `validateAllErrors` validates both `4xx` and `5xx` responses
 
-### Request configuration
+### Retries and timeouts
 
-Global defaults go into `createApi(...)`, and per-call overrides win.
+Retries support:
+
+- `"fixed"`
+- `"linear"`
+- `"exponential"`
+
+You can set them globally or per request:
 
 ```ts
-const api = createApi({
-  baseURL: "https://api.example.com",
-  endpoints,
-  auth: { type: "bearer", token: "secret" },
-  headers: { "x-app": "kanonic" },
+await kanonic("https://api.example.com/users/1", {
+  retry: {
+    attempts: 3,
+    initialDelay: 200,
+    strategy: "exponential",
+  },
   timeout: 5000,
 });
 ```
 
-```ts
-await api.todos.get(
-  { params: { id: 1 } },
-  {
-    timeout: 1000,
-    retry: {
-      attempts: 2,
-      initialDelay: 200,
-      strategy: "exponential",
-    },
-  }
-);
-```
+### Plugins
+
+Plugins can participate in the request lifecycle through:
+
+- `init`
+- `onRequest`
+- `onResponse`
+- `onSuccess`
+- `onFail`
+- `onRetry`
+
+This makes it easy to add logging, tracing, metrics, request rewriting, custom auth, or any other cross-cutting concern once and reuse it everywhere.
 
 ### Streaming
 
-Set `stream: true` on a request or endpoint to receive a typed `ReadableStream`.
+Set `stream: true` to receive a `ReadableStream`.
 
 ```ts
+import { kanonic } from "@kanonic/fetch";
+import { z } from "zod/v4";
+
 const result = await kanonic("https://example.com/events", {
   stream: true,
   outputSchema: z.object({
@@ -186,41 +233,11 @@ const result = await kanonic("https://example.com/events", {
 });
 ```
 
-Each SSE `data:` chunk is parsed independently and validated against `outputSchema`.
+Each SSE `data:` chunk is parsed independently. If you pass an `outputSchema`, each chunk is validated before it is emitted by the stream.
 
-### Plugins
+## Error Model
 
-Plugins are optional. They can modify request input up front and observe the request lifecycle through hooks like `init`, `onRequest`, `onResponse`, `onSuccess`, `onFail`, and `onRetry`.
-
-### ApiService
-
-`ApiService` is a thin class wrapper around `createApi` when you prefer an OO entrypoint.
-
-```ts
-import { ApiService, createEndpoints } from "@kanonic/api";
-import { z } from "zod/v4";
-
-const endpoints = createEndpoints({
-  posts: {
-    getById: {
-      method: "GET",
-      output: z.object({ id: z.number(), title: z.string() }),
-      params: z.object({ id: z.number() }),
-      path: "/posts/:id",
-    },
-  },
-});
-
-class BlogService extends ApiService(endpoints) {
-  constructor() {
-    super({ baseURL: "https://jsonplaceholder.typicode.com" });
-  }
-}
-```
-
-## Error Types
-
-`kanonic` returns tagged errors:
+`@kanonic/fetch` returns tagged errors:
 
 - `FetchError`
 - `TimeoutError`
@@ -229,10 +246,46 @@ class BlogService extends ApiService(endpoints) {
 - `ValidationError`
 - `PluginError`
 
-`ValidationError.type` tells you which boundary failed:
+`ValidationError.type` identifies the failing boundary:
 
 - `"body"`
 - `"query"`
 - `"params"`
 - `"output"`
 - `"error"`
+
+## Example App
+
+A small runnable example lives in [examples/app/index.ts](/Users/aldotestino/Developer/kanonic/examples/app/index.ts).
+
+Run it with:
+
+```bash
+bun run --cwd examples/app dev
+```
+
+It demonstrates:
+
+- one direct `kanonic(...)` call
+- one generated typed API client
+- one request-side validation failure
+
+## Development
+
+Useful commands from the repo root:
+
+```bash
+bun x ultracite fix
+```
+
+```bash
+bun x ultracite check
+```
+
+```bash
+bun test packages/fetch/src/index.test.ts
+```
+
+```bash
+bun test packages/api/src/index.test.ts
+```

@@ -1,4 +1,4 @@
-import type { KanonicPlugin } from "packages/fetch/src";
+import type { KanonicPlugin } from "@kanonic/fetch";
 import pino from "pino";
 
 type LoggerOptions = {

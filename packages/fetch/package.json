@@ -1,7 +1,7 @@
 {
   "name": "@kanonic/fetch",
   "version": "0.0.0",
-  "description": "A type-safe fetch client with plugins, validation, retries, and endpoint builders.",
+  "description": "A type-safe fetch wrapper with validation, retries, plugins, and streaming.",
   "license": "MIT",
   "files": [
     "src"
@@ -16,11 +16,6 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
-    },
-    "./client": {
-      "types": "./src/client/index.ts",
-      "import": "./src/client/index.ts",
-      "default": "./src/client/index.ts"
     }
   },
   "devDependencies": {

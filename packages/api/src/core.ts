@@ -1,5 +1,5 @@
-import type { KanonicOptions, KanonicPlugin } from "packages/fetch/src";
-import { ValidationError, kanonic } from "packages/fetch/src";
+import type { KanonicOptions, KanonicPlugin } from "@kanonic/fetch";
+import { ValidationError, kanonic } from "@kanonic/fetch";
 
 import type {
   ApiClient,
