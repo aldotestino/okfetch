@@ -1,9 +1,9 @@
-import type { KanonicError, KanonicOptions } from "@kanonic/fetch";
+import type { OkfetchError, OkfetchOptions } from "@okfetch/fetch";
 import type { Result } from "better-result";
 import type { infer as Infer, ZodType } from "zod/v4";
 
 export type EndpointRequestOverrides = Omit<
-  KanonicOptions,
+  OkfetchOptions,
   | "_retryAttempt"
   | "apiErrorDataSchema"
   | "baseURL"
@@ -17,7 +17,7 @@ export type EndpointRequestOverrides = Omit<
 >;
 
 export type EndpointDefinition = {
-  method: NonNullable<KanonicOptions["method"]>;
+  method: NonNullable<OkfetchOptions["method"]>;
   path: `/${string}`;
   body?: ZodType;
   error?: ZodType;
@@ -55,7 +55,7 @@ export type EndpointError<
   ? Infer<TEndpoint["error"]>
   : TGlobalError;
 
-export type ApiErrors<TError = unknown> = KanonicError<TError>;
+export type ApiErrors<TError = unknown> = OkfetchError<TError>;
 
 export type EndpointSuccess<TEndpoint extends EndpointDefinition> =
   TEndpoint["stream"] extends true
@@ -119,6 +119,18 @@ export type CreateApiOptions<
     validateOutput?: boolean;
   }
 >;
+
+export type ApiServiceClass<
+  TTree extends EndpointTree,
+  TGlobalError = unknown,
+> = new (
+  options: Omit<
+    CreateApiOptions<TTree, TGlobalError>,
+    "endpoints" | "errorSchema"
+  >
+) => {
+  readonly api: ApiClient<TTree, TGlobalError>;
+};
 
 type Prettify<TValue> = {
   [TKey in keyof TValue]: TValue[TKey];

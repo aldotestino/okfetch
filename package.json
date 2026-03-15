@@ -1,5 +1,6 @@
 {
-  "name": "@kanonic/root",
+  "name": "@okfetch/root",
+  "private": true,
   "license": "MIT",
   "workspaces": [
     "packages/*",
@@ -7,15 +8,22 @@
   ],
   "type": "module",
   "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "changeset": "changeset",
     "check": "ultracite check",
     "fix": "ultracite fix",
-    "prepare": "husky"
+    "prepare": "husky",
+    "release": "bun run build && changeset publish --access public",
+    "version-packages": "changeset version && bun install"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.29.7",
     "@types/bun": "latest",
     "husky": "^9.1.7",
     "oxfmt": "^0.35.0",
     "oxlint": "^1.50.0",
+    "tsdown": "latest",
     "ultracite": "7.2.4"
   },
   "peerDependencies": {

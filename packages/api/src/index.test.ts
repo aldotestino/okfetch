@@ -1,13 +1,13 @@
 // oxlint-disable jest/no-conditional-in-test
 import { describe, expect, test } from "bun:test";
 
-import type { KanonicFetch, KanonicPlugin } from "packages/fetch/src";
+import type { OkfetchFetch, OkfetchPlugin } from "@okfetch/fetch";
 import { z } from "zod/v4";
 
 import { ApiService, createApi, createEndpoints } from "./index";
 
 const createMockFetch =
-  (handler: (request: Request) => Response | Promise<Response>): KanonicFetch =>
+  (handler: (request: Request) => Response | Promise<Response>): OkfetchFetch =>
   async (input: string | URL | Request, init?: RequestInit) => {
     const request =
       input instanceof Request ? input : new Request(String(input), init);
@@ -49,7 +49,7 @@ const collectStreamChunks = async <T>(
   return chunks;
 };
 
-describe("kanonic client package", () => {
+describe("okfetch client package", () => {
   test("createApi returns a nested typed client", async () => {
     const mockFetch = createMockFetch((request) => {
       expect(request.url).toBe("https://api.example.com/users/7");
@@ -272,7 +272,7 @@ describe("kanonic client package", () => {
 
   test("global plugins run alongside injected validation plugin", async () => {
     let requestHeader = "";
-    const observerPlugin: KanonicPlugin = {
+    const observerPlugin: OkfetchPlugin = {
       name: "observer",
       version: "1.0.0",
       hooks: {

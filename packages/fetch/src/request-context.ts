@@ -1,12 +1,12 @@
 import type {
-  KanonicBody,
-  KanonicOptions,
-  KanonicRequestContext,
+  OkfetchBody,
+  OkfetchOptions,
+  OkfetchRequestContext,
 } from "./types";
 
 const nonBodyMethods = new Set(["HEAD", "OPTIONS"]);
 
-const isDirectBody = (value: unknown): value is KanonicBody =>
+const isDirectBody = (value: unknown): value is OkfetchBody =>
   value instanceof FormData ||
   value instanceof URLSearchParams ||
   value instanceof Blob ||
@@ -15,7 +15,7 @@ const isDirectBody = (value: unknown): value is KanonicBody =>
   ArrayBuffer.isView(value) ||
   value instanceof ReadableStream;
 
-const resolveUrl = (url: string, options: KanonicOptions): URL => {
+const resolveUrl = (url: string, options: OkfetchOptions): URL => {
   let urlWithParams = url;
   if (options.params) {
     for (const [key, value] of Object.entries(options.params)) {
@@ -49,7 +49,7 @@ const resolveUrl = (url: string, options: KanonicOptions): URL => {
   return resolvedUrl;
 };
 
-const resolveHeaders = (options: KanonicOptions): Headers => {
+const resolveHeaders = (options: OkfetchOptions): Headers => {
   const headers = new Headers(options.headers);
 
   if (!options.auth) {
@@ -80,10 +80,10 @@ const resolveHeaders = (options: KanonicOptions): Headers => {
 };
 
 const resolveBody = (
-  method: KanonicRequestContext["method"],
-  options: KanonicOptions,
+  method: OkfetchRequestContext["method"],
+  options: OkfetchOptions,
   headers: Headers
-): KanonicBody | undefined => {
+): OkfetchBody | undefined => {
   if (nonBodyMethods.has(method) || !options.body) {
     return undefined;
   }
@@ -119,8 +119,8 @@ const resolveBody = (
 
 export const buildRequestContext = (
   url: string,
-  options: KanonicOptions
-): KanonicRequestContext => {
+  options: OkfetchOptions
+): OkfetchRequestContext => {
   const method = options.method ?? (options.body ? "POST" : "GET");
   const headers = resolveHeaders(options);
   const controller = new AbortController();

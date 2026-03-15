@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "tsdown": {
+      "source": "antfu/skills",
+      "sourceType": "github",
+      "computedHash": "d8b068698fcf0db31bf5ea225fe19f6a37ae73863081f74509452a07481aae4c"
+    }
+  }
+}

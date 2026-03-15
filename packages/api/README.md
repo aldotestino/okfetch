@@ -1,8 +1,8 @@
-# @kanonic/api
+# @okfetch/api
 
-`@kanonic/api` builds typed API clients from endpoint definitions.
+`@okfetch/api` builds typed API clients from endpoint definitions.
 
-It sits on top of `@kanonic/fetch` and adds:
+It sits on top of `@okfetch/fetch` and adds:
 
 - schema-defined endpoint trees
 - typed method generation
@@ -14,11 +14,11 @@ Use this package when you have more than a few repeated API calls and want one s
 ## Installation
 
 ```bash
-bun add @kanonic/api @kanonic/fetch better-result zod
+bun add @okfetch/api @okfetch/fetch better-result zod
 ```
 
 ```bash
-npm install @kanonic/api @kanonic/fetch better-result zod
+npm install @okfetch/api @okfetch/fetch better-result zod
 ```
 
 ## What It Exports
@@ -43,7 +43,7 @@ Types:
 ## Quick Example
 
 ```ts
-import { createApi, createEndpoints } from "@kanonic/api";
+import { createApi, createEndpoints } from "@okfetch/api";
 import { z } from "zod/v4";
 
 const todoSchema = z.object({
@@ -140,7 +140,7 @@ await api.users.get(
 
 ## Validation Behavior
 
-By default, `@kanonic/api` validates:
+By default, `@okfetch/api` validates:
 
 - `body`
 - `params`
@@ -148,7 +148,7 @@ By default, `@kanonic/api` validates:
 
 before the network call is sent.
 
-It delegates response parsing, retries, streaming, auth, plugins, and error handling to `@kanonic/fetch`.
+It delegates response parsing, retries, streaming, auth, plugins, and error handling to `@okfetch/fetch`.
 
 Useful options:
 
@@ -158,7 +158,7 @@ Useful options:
 - `shouldValidateError`
 
 ```ts
-import { validateClientErrors } from "@kanonic/fetch";
+import { validateClientErrors } from "@okfetch/fetch";
 
 const api = createApi({
   baseURL: "https://api.example.com",
@@ -194,7 +194,7 @@ const endpoints = createEndpoints({
 `ApiService` is a small helper for teams that prefer a class wrapper around a generated client.
 
 ```ts
-import { ApiService, createEndpoints } from "@kanonic/api";
+import { ApiService, createEndpoints } from "@okfetch/api";
 import { z } from "zod/v4";
 
 const endpoints = createEndpoints({
@@ -215,17 +215,17 @@ class BlogService extends ApiService(endpoints) {
 }
 ```
 
-## Relationship To `@kanonic/fetch`
+## Relationship To `@okfetch/fetch`
 
-`@kanonic/api` does not replace `@kanonic/fetch`; it composes it.
+`@okfetch/api` does not replace `@okfetch/fetch`; it composes it.
 
-Choose `@kanonic/fetch` when:
+Choose `@okfetch/fetch` when:
 
 - you only need a few direct requests
 - you want total control over each request
 - you are building your own abstractions
 
-Choose `@kanonic/api` when:
+Choose `@okfetch/api` when:
 
 - your app has a shared API surface
 - you want endpoint schemas in one place

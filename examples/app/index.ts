@@ -1,6 +1,6 @@
-import { logger } from "@kanonic/logger";
-import { createApi, createEndpoints } from "packages/api/src";
-import { kanonic } from "packages/fetch/src";
+import { createApi, createEndpoints } from "@okfetch/api";
+import { okfetch } from "@okfetch/fetch";
+import { logger } from "@okfetch/logger";
 import { z } from "zod/v4";
 
 const todoSchema = z.object({
@@ -34,14 +34,14 @@ const api = createApi({
   baseURL: "https://jsonplaceholder.typicode.com",
   endpoints,
   headers: {
-    "x-demo": "kanonic-example",
+    "x-demo": "okfetch-example",
   },
   plugins: [logger()],
 });
 
 console.log("1. Direct request with schema validation\n");
 
-const directTodo = await kanonic(
+const directTodo = await okfetch(
   "https://jsonplaceholder.typicode.com/todos/1",
   {
     outputSchema: todoSchema,

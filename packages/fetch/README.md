@@ -1,6 +1,6 @@
-# @kanonic/fetch
+# @okfetch/fetch
 
-`@kanonic/fetch` is the transport core of the kanonic ecosystem.
+`@okfetch/fetch` is the transport core of the okfetch ecosystem.
 
 It wraps the standard `fetch` API with:
 
@@ -16,18 +16,18 @@ If you want typed HTTP calls without building a full generated client, this is t
 ## Installation
 
 ```bash
-bun add @kanonic/fetch better-result zod
+bun add @okfetch/fetch better-result zod
 ```
 
 ```bash
-npm install @kanonic/fetch better-result zod
+npm install @okfetch/fetch better-result zod
 ```
 
 ## What It Exports
 
 Functions:
 
-- `kanonic`
+- `okfetch`
 - `validateClientErrors`
 - `validateAllErrors`
 
@@ -42,18 +42,18 @@ Errors:
 
 Types:
 
-- `KanonicOptions`
-- `KanonicError`
-- `KanonicPlugin`
-- `KanonicPluginHooks`
-- `KanonicSuccess`
+- `OkfetchOptions`
+- `OkfetchError`
+- `OkfetchPlugin`
+- `OkfetchPluginHooks`
+- `OkfetchSuccess`
 - `RetryOptions`
 - `Auth`
 
 ## Quick Example
 
 ```ts
-import { kanonic } from "@kanonic/fetch";
+import { okfetch } from "@okfetch/fetch";
 import { z } from "zod/v4";
 
 const todoSchema = z.object({
@@ -63,7 +63,7 @@ const todoSchema = z.object({
   userId: z.number(),
 });
 
-const result = await kanonic("https://jsonplaceholder.typicode.com/todos/1", {
+const result = await okfetch("https://jsonplaceholder.typicode.com/todos/1", {
   outputSchema: todoSchema,
 });
 
@@ -75,7 +75,7 @@ result.match({
 
 ## Request Options
 
-`kanonic(url, options)` accepts standard `fetch` options plus kanonic-specific behavior:
+`okfetch(url, options)` accepts standard `fetch` options plus okfetch-specific behavior:
 
 - `outputSchema`
 - `apiErrorDataSchema`
@@ -99,7 +99,7 @@ You can pass a fully qualified URL directly, or combine a relative path with `ba
 Path params are replaced from `params`, and query strings are built from `query`.
 
 ```ts
-await kanonic("/users/:id", {
+await okfetch("/users/:id", {
   baseURL: "https://api.example.com",
   method: "GET",
   params: { id: 42 },
@@ -112,7 +112,7 @@ await kanonic("/users/:id", {
 `outputSchema` validates successful responses:
 
 ```ts
-await kanonic("https://api.example.com/me", {
+await okfetch("https://api.example.com/me", {
   outputSchema: z.object({
     id: z.string(),
     email: z.string().email(),
@@ -123,9 +123,9 @@ await kanonic("https://api.example.com/me", {
 `apiErrorDataSchema` validates structured error bodies when `shouldValidateError` allows it:
 
 ```ts
-import { validateClientErrors } from "@kanonic/fetch";
+import { validateClientErrors } from "@okfetch/fetch";
 
-await kanonic("https://api.example.com/me", {
+await okfetch("https://api.example.com/me", {
   apiErrorDataSchema: z.object({
     code: z.string(),
     message: z.string(),
@@ -143,7 +143,7 @@ Supported strategies:
 - `exponential`
 
 ```ts
-await kanonic("https://api.example.com/me", {
+await okfetch("https://api.example.com/me", {
   retry: {
     attempts: 3,
     initialDelay: 100,
@@ -161,7 +161,7 @@ Built-in auth shapes:
 - `{ type: "custom", prefix, value }`
 
 ```ts
-await kanonic("https://api.example.com/me", {
+await okfetch("https://api.example.com/me", {
   auth: {
     type: "bearer",
     token: process.env.API_TOKEN ?? "",
@@ -174,9 +174,9 @@ await kanonic("https://api.example.com/me", {
 Plugins are a core extension point.
 
 ```ts
-import type { KanonicPlugin } from "@kanonic/fetch";
+import type { OkfetchPlugin } from "@okfetch/fetch";
 
-const plugin: KanonicPlugin = {
+const plugin: OkfetchPlugin = {
   name: "timing",
   version: "1.0.0",
   hooks: {
@@ -205,7 +205,7 @@ Available lifecycle hooks:
 Set `stream: true` to receive a `ReadableStream`.
 
 ```ts
-const result = await kanonic("https://example.com/events", {
+const result = await okfetch("https://example.com/events", {
   stream: true,
   outputSchema: z.object({
     id: z.number(),
@@ -218,7 +218,7 @@ When an `outputSchema` is present, each SSE `data:` chunk is parsed and validate
 
 ## Error Handling
 
-`kanonic` never throws expected HTTP, parsing, timeout, or validation failures from the request API itself. Instead it returns tagged errors inside the `Result`.
+`okfetch` never throws expected HTTP, parsing, timeout, or validation failures from the request API itself. Instead it returns tagged errors inside the `Result`.
 
 Use `match` when you want explicit branching:
 
@@ -235,5 +235,5 @@ result.match({
 
 ## Related Packages
 
-- `@kanonic/api` builds typed API clients on top of this package
-- `@kanonic/logger` provides a ready-made logging plugin
+- `@okfetch/api` builds typed API clients on top of this package
+- `@okfetch/logger` provides a ready-made logging plugin

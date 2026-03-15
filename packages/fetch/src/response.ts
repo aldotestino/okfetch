@@ -1,10 +1,10 @@
 import { Result } from "better-result";
 
 import { ApiError, ParseError, ValidationError } from "./errors";
-import type { KanonicOptions } from "./types";
+import type { OkfetchOptions } from "./types";
 
 export const shouldValidateErrorResponse = (
-  options: KanonicOptions,
+  options: OkfetchOptions,
   statusCode: number
 ): boolean =>
   options.apiErrorDataSchema !== undefined &&
@@ -25,7 +25,7 @@ export const readResponseText = async (
 export const createApiError = <TErr>(
   response: Response,
   text: string,
-  options: KanonicOptions
+  options: OkfetchOptions
 ): ApiError<TErr> => {
   const baseError = new ApiError<TErr>({
     statusCode: response.status,
@@ -62,7 +62,7 @@ export const createApiError = <TErr>(
 
 export const parseResponseData = <TRes>(
   text: string,
-  options: KanonicOptions
+  options: OkfetchOptions
 ): Result<TRes, ParseError | ValidationError> => {
   const dataResult = Result.try({
     catch: (error) =>

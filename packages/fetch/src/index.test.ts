@@ -5,8 +5,8 @@ import type { Result } from "better-result";
 import { z } from "zod/v4";
 
 import { ValidationError } from "./errors";
-import type { KanonicError, KanonicFetch, KanonicPlugin } from "./index";
-import { kanonic } from "./index";
+import type { OkfetchError, OkfetchFetch, OkfetchPlugin } from "./index";
+import { okfetch } from "./index";
 import { validateAllErrors, validateClientErrors } from "./presets";
 import { buildRequestContext } from "./request-context";
 import {
@@ -17,10 +17,10 @@ import {
 } from "./response";
 import { computeRetryDelay, shouldRetryError, sleep } from "./retry";
 import { createParsedStream } from "./stream";
-import type { KanonicPluginInitInput } from "./types";
+import type { OkfetchPluginInitInput } from "./types";
 
 const createMockFetch =
-  (handler: (request: Request) => Response | Promise<Response>): KanonicFetch =>
+  (handler: (request: Request) => Response | Promise<Response>): OkfetchFetch =>
   async (input: string | URL | Request, init?: RequestInit) => {
     const request =
       input instanceof Request ? input : new Request(String(input), init);
@@ -28,7 +28,7 @@ const createMockFetch =
   };
 
 const createRejectingFetch =
-  (message: string): KanonicFetch =>
+  (message: string): OkfetchFetch =>
   async () => {
     throw new TypeError(message);
   };
@@ -72,7 +72,7 @@ const createValidatorPlugin = (schemas: {
   body?: z.ZodType;
   params?: z.ZodType;
   query?: z.ZodType;
-}): KanonicPlugin => ({
+}): OkfetchPlugin => ({
   name: "validator",
   version: "1.0.0",
   init: ({ options, url }) => {
@@ -113,9 +113,9 @@ const createValidatorPlugin = (schemas: {
   },
 });
 
-describe("kanonic v2 plugins", () => {
+describe("okfetch v2 plugins", () => {
   test("executes init hooks in order and rewrites raw url and options", async () => {
-    let finalInput: KanonicPluginInitInput | undefined;
+    let finalInput: OkfetchPluginInitInput | undefined;
     let requestUrl = "";
     let requestHeader = "";
 
@@ -125,7 +125,7 @@ describe("kanonic v2 plugins", () => {
       return Response.json({ ok: true });
     });
 
-    const result = await kanonic<{ ok: boolean }, unknown>("/todos/:id", {
+    const result = await okfetch<{ ok: boolean }, unknown>("/todos/:id", {
       baseURL: "https://api.example.com",
       fetch: mockFetch,
       headers: { "x-start": "yes" },
@@ -178,7 +178,7 @@ describe("kanonic v2 plugins", () => {
       return Response.json({ ok: true });
     });
 
-    const result = await kanonic<{ ok: boolean }, unknown>("/resource", {
+    const result = await okfetch<{ ok: boolean }, unknown>("/resource", {
       baseURL: "https://api.example.com",
       fetch: mockFetch,
       plugins: [
@@ -214,7 +214,7 @@ describe("kanonic v2 plugins", () => {
   test("onResponse can replace the response used for parsing", async () => {
     const mockFetch = createMockFetch(() => Response.json({ ok: false }));
 
-    const result = await kanonic<{ ok: boolean }, unknown>("/resource", {
+    const result = await okfetch<{ ok: boolean }, unknown>("/resource", {
       baseURL: "https://api.example.com",
       fetch: mockFetch,
       plugins: [
@@ -240,7 +240,7 @@ describe("kanonic v2 plugins", () => {
   test("onSuccess fires once after retries eventually succeed", async () => {
     let attempts = 0;
     const events: string[] = [];
-    const observerPlugin: KanonicPlugin = {
+    const observerPlugin: OkfetchPlugin = {
       name: "observer",
       version: "1.0.0",
       hooks: {
@@ -265,7 +265,7 @@ describe("kanonic v2 plugins", () => {
       return Response.json({ ok: true });
     });
 
-    const result = await kanonic<{ ok: boolean }, unknown>("/resource", {
+    const result = await okfetch<{ ok: boolean }, unknown>("/resource", {
       baseURL: "https://api.example.com",
       fetch: mockFetch,
       plugins: [observerPlugin],
@@ -287,7 +287,7 @@ describe("kanonic v2 plugins", () => {
     const events: string[] = [];
     const mockFetch = createRejectingFetch("network down");
 
-    const result = await kanonic("https://example.com", {
+    const result = await okfetch("https://example.com", {
       fetch: mockFetch,
       plugins: [
         {
@@ -309,7 +309,7 @@ describe("kanonic v2 plugins", () => {
   test("side-effect hook failures are swallowed", async () => {
     const mockFetch = createMockFetch(() => Response.json({ ok: true }));
 
-    const result = await kanonic<{ ok: boolean }, unknown>("/resource", {
+    const result = await okfetch<{ ok: boolean }, unknown>("/resource", {
       baseURL: "https://api.example.com",
       fetch: mockFetch,
       plugins: [
@@ -329,7 +329,7 @@ describe("kanonic v2 plugins", () => {
   });
 
   test("unexpected mutating hook failures become PluginError", async () => {
-    const result = await kanonic("https://example.com", {
+    const result = await okfetch("https://example.com", {
       plugins: [
         {
           name: "broken",
@@ -349,13 +349,13 @@ describe("kanonic v2 plugins", () => {
     }
   });
 
-  test("existing KanonicError thrown by plugin is preserved", async () => {
+  test("existing OkfetchError thrown by plugin is preserved", async () => {
     const parsed = z.object({ id: z.string() }).safeParse({ id: 1 });
     if (parsed.success) {
       throw new Error("Expected invalid query fixture");
     }
 
-    const result = await kanonic("https://example.com", {
+    const result = await okfetch("https://example.com", {
       plugins: [
         {
           name: "validator",
@@ -387,7 +387,7 @@ describe("kanonic v2 plugins", () => {
       return Response.json({ ok: true });
     });
 
-    const result = await kanonic("https://example.com/todos/:id", {
+    const result = await okfetch("https://example.com/todos/:id", {
       body: { title: 42 },
       fetch: mockFetch,
       params: { id: "bad" },
@@ -414,7 +414,7 @@ describe("kanonic v2 plugins", () => {
       throw new TypeError("offline");
     });
 
-    const result = await kanonic("https://example.com", {
+    const result = await okfetch("https://example.com", {
       fetch: mockFetch,
       plugins: [
         {
@@ -445,7 +445,7 @@ describe("kanonic v2 plugins", () => {
       Response.json({ code: "NOPE" }, { status: 400 })
     );
 
-    const result = await kanonic<unknown, { code: string }>(
+    const result = await okfetch<unknown, { code: string }>(
       "https://example.com/resource",
       {
         apiErrorDataSchema: z.object({ code: z.string() }),
@@ -465,7 +465,7 @@ describe("kanonic v2 plugins", () => {
       Response.json({ code: "NOPE" }, { status: 400 })
     );
 
-    const result = await kanonic<unknown, { code: string }>(
+    const result = await okfetch<unknown, { code: string }>(
       "https://example.com/resource",
       {
         apiErrorDataSchema: z.object({ code: z.string() }),
@@ -485,7 +485,7 @@ describe("kanonic v2 plugins", () => {
       Response.json({ message: 42 }, { status: 400 })
     );
 
-    const result = await kanonic<unknown, { message: string }>(
+    const result = await okfetch<unknown, { message: string }>(
       "https://example.com/resource",
       {
         apiErrorDataSchema: z.object({ message: z.string() }),
@@ -510,7 +510,7 @@ describe("kanonic v2 plugins", () => {
       stream: true as const,
     };
 
-    const result = await kanonic<string, unknown>(
+    const result = await okfetch<string, unknown>(
       "https://example.com/stream",
       options
     );
@@ -534,7 +534,7 @@ describe("kanonic v2 plugins", () => {
       stream: true as const,
     };
 
-    const result = await kanonic<{ id: number }, unknown>(
+    const result = await okfetch<{ id: number }, unknown>(
       "https://example.com/stream",
       options
     );
@@ -558,7 +558,7 @@ describe("kanonic v2 plugins", () => {
       stream: true as const,
     };
 
-    const result = await kanonic<{ id: number }, unknown>(
+    const result = await okfetch<{ id: number }, unknown>(
       "https://example.com/stream",
       options
     );
@@ -581,7 +581,7 @@ describe("kanonic v2 plugins", () => {
       Response.json({ id: "unexpected-string" })
     );
 
-    const result = await kanonic("https://example.com/resource", {
+    const result = await okfetch("https://example.com/resource", {
       fetch: mockFetch,
       outputSchema: z.object({
         id: z.number(),
@@ -609,7 +609,7 @@ describe("kanonic v2 plugins", () => {
       validateOutput: false,
     };
 
-    const result = await kanonic<{ id: number | string }, unknown>(
+    const result = await okfetch<{ id: number | string }, unknown>(
       "https://example.com/stream",
       options
     );
@@ -627,8 +627,8 @@ describe("kanonic v2 plugins", () => {
     );
 
     const resultPromise: Promise<
-      Result<ReadableStream<string>, KanonicError<unknown>>
-    > = kanonic<string>("https://example.com/stream", {
+      Result<ReadableStream<string>, OkfetchError<unknown>>
+    > = okfetch<string>("https://example.com/stream", {
       fetch: mockFetch,
       stream: true as const,
     });
@@ -1054,9 +1054,9 @@ describe("stream helpers", () => {
   });
 });
 
-describe("kanonic edge cases", () => {
+describe("okfetch edge cases", () => {
   test("wraps onRequest and onResponse hook failures as PluginError", async () => {
-    const onRequestResult = await kanonic("https://example.com", {
+    const onRequestResult = await okfetch("https://example.com", {
       plugins: [
         {
           name: "broken-request",
@@ -1079,7 +1079,7 @@ describe("kanonic edge cases", () => {
       });
     }
 
-    const onResponseResult = await kanonic("https://example.com", {
+    const onResponseResult = await okfetch("https://example.com", {
       fetch: createMockFetch(() => Response.json({ ok: true })),
       plugins: [
         {
@@ -1105,7 +1105,7 @@ describe("kanonic edge cases", () => {
   });
 
   test("returns timeout and stream body parse failures", async () => {
-    const timeoutResult = await kanonic("https://example.com/timeout", {
+    const timeoutResult = await okfetch("https://example.com/timeout", {
       fetch: createMockFetch(
         (request) =>
           new Promise<Response>((_resolve, reject) => {
@@ -1125,7 +1125,7 @@ describe("kanonic edge cases", () => {
       });
     }
 
-    const nullBodyResult = await kanonic("https://example.com/stream", {
+    const nullBodyResult = await okfetch("https://example.com/stream", {
       fetch: createMockFetch(() => new Response(null, { status: 200 })),
       stream: true,
     });
@@ -1150,7 +1150,7 @@ describe("kanonic edge cases", () => {
       },
     } as unknown as Response;
 
-    const unreadableResult = await kanonic("https://example.com/unreadable", {
+    const unreadableResult = await okfetch("https://example.com/unreadable", {
       fetch: createMockFetch(() => unreadableResponse),
     });
 
@@ -1159,7 +1159,7 @@ describe("kanonic edge cases", () => {
       expect(unreadableResult.error._tag).toBe("ParseError");
     }
 
-    const invalidJsonResult = await kanonic(
+    const invalidJsonResult = await okfetch(
       "https://example.com/invalid-json",
       {
         fetch: createMockFetch(() => new Response("not-json")),

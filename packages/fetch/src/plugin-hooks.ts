@@ -9,14 +9,14 @@ import {
   ValidationError,
 } from "./errors";
 import type {
-  KanonicError,
-  KanonicPlugin,
-  KanonicPluginInitInput,
-  KanonicRequestContext,
-  RetryableKanonicError,
+  OkfetchError,
+  OkfetchPlugin,
+  OkfetchPluginInitInput,
+  OkfetchRequestContext,
+  RetryableOkfetchError,
 } from "./types";
 
-const isKanonicError = <TErr>(error: unknown): error is KanonicError<TErr> =>
+const isOkfetchError = <TErr>(error: unknown): error is OkfetchError<TErr> =>
   error instanceof FetchError ||
   error instanceof ApiError ||
   error instanceof ParseError ||
@@ -28,8 +28,8 @@ const wrapPluginError = <TErr>(
   error: unknown,
   pluginName: string,
   hook: "init" | "onRequest" | "onResponse"
-): KanonicError<TErr> => {
-  if (isKanonicError<TErr>(error)) {
+): OkfetchError<TErr> => {
+  if (isOkfetchError<TErr>(error)) {
     return error;
   }
 
@@ -42,9 +42,9 @@ const wrapPluginError = <TErr>(
 };
 
 export const runPluginInit = async (
-  plugins: KanonicPlugin[],
-  input: KanonicPluginInitInput
-): Promise<Result<KanonicPluginInitInput, KanonicError<unknown>>> => {
+  plugins: OkfetchPlugin[],
+  input: OkfetchPluginInitInput
+): Promise<Result<OkfetchPluginInitInput, OkfetchError<unknown>>> => {
   let current = input;
 
   for (const plugin of plugins) {
@@ -66,9 +66,9 @@ export const runPluginInit = async (
 };
 
 export const runOnRequest = async (
-  plugins: KanonicPlugin[],
-  context: KanonicRequestContext
-): Promise<Result<KanonicRequestContext, KanonicError<unknown>>> => {
+  plugins: OkfetchPlugin[],
+  context: OkfetchRequestContext
+): Promise<Result<OkfetchRequestContext, OkfetchError<unknown>>> => {
   let current = context;
 
   for (const plugin of plugins) {
@@ -90,10 +90,10 @@ export const runOnRequest = async (
 };
 
 export const runOnResponse = async (
-  plugins: KanonicPlugin[],
-  context: KanonicRequestContext,
+  plugins: OkfetchPlugin[],
+  context: OkfetchRequestContext,
   response: Response
-): Promise<Result<Response, KanonicError<unknown>>> => {
+): Promise<Result<Response, OkfetchError<unknown>>> => {
   let current = response;
 
   for (const plugin of plugins) {
@@ -115,8 +115,8 @@ export const runOnResponse = async (
 };
 
 export const runOnSuccess = async <TRes>(
-  plugins: KanonicPlugin[],
-  context: KanonicRequestContext,
+  plugins: OkfetchPlugin[],
+  context: OkfetchRequestContext,
   response: Response,
   data: TRes
 ): Promise<void> => {
@@ -134,10 +134,10 @@ export const runOnSuccess = async <TRes>(
 };
 
 export const runOnFail = async <TErr>(
-  plugins: KanonicPlugin[],
-  context: KanonicRequestContext,
+  plugins: OkfetchPlugin[],
+  context: OkfetchRequestContext,
   response: Response | undefined,
-  error: KanonicError<TErr>
+  error: OkfetchError<TErr>
 ): Promise<void> => {
   for (const plugin of plugins) {
     if (!plugin.hooks?.onFail) {
@@ -153,10 +153,10 @@ export const runOnFail = async <TErr>(
 };
 
 export const runOnRetry = async (
-  plugins: KanonicPlugin[],
-  context: KanonicRequestContext,
+  plugins: OkfetchPlugin[],
+  context: OkfetchRequestContext,
   response: Response | undefined,
-  error: RetryableKanonicError,
+  error: RetryableOkfetchError,
   attempt: number
 ): Promise<void> => {
   for (const plugin of plugins) {

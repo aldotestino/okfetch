@@ -1,9 +1,10 @@
-import type { KanonicOptions, KanonicPlugin } from "@kanonic/fetch";
-import { ValidationError, kanonic } from "@kanonic/fetch";
+import type { OkfetchOptions, OkfetchPlugin } from "@okfetch/fetch";
+import { ValidationError, okfetch } from "@okfetch/fetch";
 
 import type {
   ApiClient,
   CreateApiOptions,
+  ApiServiceClass,
   EndpointCallOptions,
   EndpointDefinition,
   EndpointFunction,
@@ -19,8 +20,8 @@ const isEndpoint = (
 const createValidationPlugin = (
   endpoint: EndpointDefinition,
   enabled: boolean
-): KanonicPlugin => ({
-  name: "kanonic-endpoint-validator",
+): OkfetchPlugin => ({
+  name: "okfetch-endpoint-validator",
   version: "1.0.0",
   init: ({ options, url }) => {
     if (!enabled) {
@@ -105,7 +106,7 @@ const buildEndpointFn = <TEndpoint extends EndpointDefinition, TGlobalError>(
       ? maybeRequestOverrides
       : (maybeCallOptions as EndpointRequestOverrides | undefined);
     const payload = (callOptions ?? {}) as Partial<
-      Pick<KanonicOptions, "body" | "params" | "query">
+      Pick<OkfetchOptions, "body" | "params" | "query">
     >;
 
     const {
@@ -124,7 +125,7 @@ const buildEndpointFn = <TEndpoint extends EndpointDefinition, TGlobalError>(
       ...overrideRest
     } = requestOverrides ?? {};
 
-    const options: KanonicOptions = {
+    const options: OkfetchOptions = {
       ...globalRest,
       ...endpointRest,
       ...overrideRest,
@@ -147,7 +148,7 @@ const buildEndpointFn = <TEndpoint extends EndpointDefinition, TGlobalError>(
       validateOutput,
     };
 
-    return kanonic(endpoint.path, options);
+    return okfetch(endpoint.path, options);
   };
 
   return fn as EndpointFunction<TEndpoint, TGlobalError>;
@@ -216,7 +217,7 @@ export const createEndpoints = <TTree extends EndpointTree>(endpoints: TTree) =>
 export const ApiService = <TTree extends EndpointTree, TGlobalError = unknown>(
   endpoints: TTree,
   errorSchema?: CreateApiOptions<TTree, TGlobalError>["errorSchema"]
-) =>
+): ApiServiceClass<TTree, TGlobalError> =>
   class ApiServiceClass {
     protected readonly client: ApiClient<TTree, TGlobalError>;
 

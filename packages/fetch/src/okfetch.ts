@@ -19,16 +19,16 @@ import {
 import { computeRetryDelay, shouldRetryError, sleep } from "./retry";
 import { createParsedStream } from "./stream";
 import type {
-  KanonicError,
-  KanonicOptions,
-  KanonicRequestContext,
-  KanonicSuccess,
-  RetryableKanonicError,
+  OkfetchError,
+  OkfetchOptions,
+  OkfetchRequestContext,
+  OkfetchSuccess,
+  RetryableOkfetchError,
 } from "./types";
 
 type RequestLoopState = {
   attempt: number;
-  context: KanonicRequestContext;
+  context: OkfetchRequestContext;
 };
 
 type ContinueLoop = {
@@ -37,33 +37,33 @@ type ContinueLoop = {
 };
 
 type StopLoop<TRes, TErr> = {
-  result: Result<TRes, KanonicError<TErr>>;
+  result: Result<TRes, OkfetchError<TErr>>;
   shouldContinue: false;
 };
 
-type AttemptResult<TRes, TErr, Options extends KanonicOptions> =
+type AttemptResult<TRes, TErr, Options extends OkfetchOptions> =
   | ContinueLoop
-  | StopLoop<KanonicSuccess<Options, TRes>, TErr>;
+  | StopLoop<OkfetchSuccess<Options, TRes>, TErr>;
 
 const withAttempt = (
-  options: KanonicOptions,
+  options: OkfetchOptions,
   attempt: number
-): KanonicOptions => ({
+): OkfetchOptions => ({
   ...options,
   _retryAttempt: attempt,
 });
 
 const shouldRetry = (
-  error: RetryableKanonicError,
-  options: KanonicOptions,
+  error: RetryableOkfetchError,
+  options: OkfetchOptions,
   attempt: number
 ): boolean => shouldRetryError(error, withAttempt(options, attempt));
 
-const getRetryDelay = (options: KanonicOptions, attempt: number): number =>
+const getRetryDelay = (options: OkfetchOptions, attempt: number): number =>
   computeRetryDelay(withAttempt(options, attempt), attempt);
 
 const scheduleTimeout = (
-  options: KanonicOptions,
+  options: OkfetchOptions,
   controller: AbortController
 ): ReturnType<typeof setTimeout> | undefined => {
   if (options.signal || !options.timeout) {
@@ -76,8 +76,8 @@ const scheduleTimeout = (
 };
 
 const fetchResponse = async (
-  context: KanonicRequestContext,
-  options: KanonicOptions
+  context: OkfetchRequestContext,
+  options: OkfetchOptions
 ) => {
   const controller = new AbortController();
   context.signal = options.signal ?? controller.signal;
@@ -114,11 +114,11 @@ const fetchResponse = async (
 };
 
 const retryRequest = async (
-  plugins: NonNullable<KanonicOptions["plugins"]>,
-  context: KanonicRequestContext,
+  plugins: NonNullable<OkfetchOptions["plugins"]>,
+  context: OkfetchRequestContext,
   response: Response | undefined,
-  error: RetryableKanonicError,
-  options: KanonicOptions,
+  error: RetryableOkfetchError,
+  options: OkfetchOptions,
   attempt: number
 ): Promise<ContinueLoop> => {
   await runOnRetry(plugins, context, response, error, attempt);
@@ -134,10 +134,10 @@ const retryRequest = async (
 };
 
 const failRequest = async <TErr>(
-  plugins: NonNullable<KanonicOptions["plugins"]>,
-  context: KanonicRequestContext,
+  plugins: NonNullable<OkfetchOptions["plugins"]>,
+  context: OkfetchRequestContext,
   response: Response | undefined,
-  error: KanonicError<TErr>
+  error: OkfetchError<TErr>
 ): Promise<StopLoop<never, TErr>> => {
   await runOnFail(plugins, context, response, error);
   return {
@@ -155,10 +155,10 @@ const readResponsePayload = async (response: Response, isStream: boolean) => {
 };
 
 const handleTransportError = async <TErr>(
-  plugins: NonNullable<KanonicOptions["plugins"]>,
+  plugins: NonNullable<OkfetchOptions["plugins"]>,
   state: RequestLoopState,
-  options: KanonicOptions,
-  error: RetryableKanonicError
+  options: OkfetchOptions,
+  error: RetryableOkfetchError
 ): Promise<ContinueLoop | StopLoop<never, TErr>> => {
   if (shouldRetry(error, options, state.attempt)) {
     return retryRequest(
@@ -175,14 +175,14 @@ const handleTransportError = async <TErr>(
     plugins,
     state.context,
     undefined,
-    error as KanonicError<TErr>
+    error as OkfetchError<TErr>
   );
 };
 
 const handleApiFailure = async <TErr>(
-  plugins: NonNullable<KanonicOptions["plugins"]>,
+  plugins: NonNullable<OkfetchOptions["plugins"]>,
   state: RequestLoopState,
-  options: KanonicOptions,
+  options: OkfetchOptions,
   response: Response,
   text: string
 ): Promise<ContinueLoop | StopLoop<never, TErr>> => {
@@ -204,14 +204,14 @@ const handleApiFailure = async <TErr>(
 const handleSuccessfulResponse = async <
   TRes,
   TErr,
-  Options extends KanonicOptions,
+  Options extends OkfetchOptions,
 >(
-  plugins: NonNullable<KanonicOptions["plugins"]>,
-  context: KanonicRequestContext,
+  plugins: NonNullable<OkfetchOptions["plugins"]>,
+  context: OkfetchRequestContext,
   options: Options,
   response: Response,
   text: string
-): Promise<Result<KanonicSuccess<Options, TRes>, KanonicError<TErr>>> => {
+): Promise<Result<OkfetchSuccess<Options, TRes>, OkfetchError<TErr>>> => {
   if (options.stream) {
     if (!response.body) {
       const parseError = new ParseError({
@@ -230,12 +230,12 @@ const handleSuccessfulResponse = async <
       plugins,
       context,
       response,
-      stream as KanonicSuccess<Options, TRes>
+      stream as OkfetchSuccess<Options, TRes>
     );
-    return Result.ok(stream as KanonicSuccess<Options, TRes>);
+    return Result.ok(stream as OkfetchSuccess<Options, TRes>);
   }
 
-  const dataResult = parseResponseData<KanonicSuccess<Options, TRes>>(
+  const dataResult = parseResponseData<OkfetchSuccess<Options, TRes>>(
     text,
     options
   );
@@ -248,15 +248,15 @@ const handleSuccessfulResponse = async <
   return Result.ok(dataResult.value);
 };
 
-const executeAttempt = async <TRes, TErr, Options extends KanonicOptions>(
-  plugins: NonNullable<KanonicOptions["plugins"]>,
+const executeAttempt = async <TRes, TErr, Options extends OkfetchOptions>(
+  plugins: NonNullable<OkfetchOptions["plugins"]>,
   state: RequestLoopState,
   options: Options
 ): Promise<AttemptResult<TRes, TErr, Options>> => {
   const requestResult = await runOnRequest(plugins, { ...state.context });
   if (requestResult.isErr()) {
     return {
-      result: Result.err(requestResult.error as KanonicError<TErr>),
+      result: Result.err(requestResult.error as OkfetchError<TErr>),
       shouldContinue: false,
     };
   }
@@ -279,7 +279,7 @@ const executeAttempt = async <TRes, TErr, Options extends KanonicOptions>(
   );
   if (hookResponseResult.isErr()) {
     return {
-      result: Result.err(hookResponseResult.error as KanonicError<TErr>),
+      result: Result.err(hookResponseResult.error as OkfetchError<TErr>),
       shouldContinue: false,
     };
   }
@@ -318,51 +318,51 @@ const executeAttempt = async <TRes, TErr, Options extends KanonicOptions>(
   };
 };
 
-export function kanonic<Options extends KanonicOptions = KanonicOptions>(
+export function okfetch<Options extends OkfetchOptions = OkfetchOptions>(
   url: string,
   options: Options
 ): Promise<
   Result<
-    KanonicSuccess<
+    OkfetchSuccess<
       Options,
       Options["outputSchema"] extends ZodType
         ? Infer<Options["outputSchema"]>
         : unknown
     >,
-    KanonicError<
+    OkfetchError<
       Options["apiErrorDataSchema"] extends ZodType
         ? Infer<Options["apiErrorDataSchema"]>
         : unknown
     >
   >
 >;
-export function kanonic<TRes = unknown>(
+export function okfetch<TRes = unknown>(
   url: string,
-  options: KanonicOptions & { stream: true }
-): Promise<Result<ReadableStream<TRes>, KanonicError<unknown>>>;
-export function kanonic<TRes = unknown, TErr = unknown>(
+  options: OkfetchOptions & { stream: true }
+): Promise<Result<ReadableStream<TRes>, OkfetchError<unknown>>>;
+export function okfetch<TRes = unknown, TErr = unknown>(
   url: string,
-  options: KanonicOptions & { stream: true }
-): Promise<Result<ReadableStream<TRes>, KanonicError<TErr>>>;
-export function kanonic<TRes = unknown, TErr = unknown>(
+  options: OkfetchOptions & { stream: true }
+): Promise<Result<ReadableStream<TRes>, OkfetchError<TErr>>>;
+export function okfetch<TRes = unknown, TErr = unknown>(
   url: string,
-  options: KanonicOptions
-): Promise<Result<TRes, KanonicError<TErr>>>;
-export async function kanonic<
+  options: OkfetchOptions
+): Promise<Result<TRes, OkfetchError<TErr>>>;
+export async function okfetch<
   TRes = unknown,
   TErr = unknown,
-  Options extends KanonicOptions = KanonicOptions,
+  Options extends OkfetchOptions = OkfetchOptions,
 >(
   url: string,
   options: Options
-): Promise<Result<KanonicSuccess<Options, TRes>, KanonicError<TErr>>> {
+): Promise<Result<OkfetchSuccess<Options, TRes>, OkfetchError<TErr>>> {
   const plugins = options.plugins ?? [];
   const initResult = await runPluginInit(plugins, {
-    options: options as KanonicOptions,
+    options: options as OkfetchOptions,
     url,
   });
   if (initResult.isErr()) {
-    return Result.err(initResult.error as KanonicError<TErr>);
+    return Result.err(initResult.error as OkfetchError<TErr>);
   }
 
   const requestContext = buildRequestContext(

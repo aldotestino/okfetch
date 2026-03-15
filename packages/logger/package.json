@@ -1,32 +1,51 @@
 {
-  "name": "@kanonic/logger",
-  "version": "0.0.0",
-  "description": "A pino-based logging plugin for kanonic request lifecycles.",
+  "name": "@okfetch/logger",
+  "version": "0.1.0",
+  "description": "A pino-based logging plugin for okfetch request lifecycles.",
+  "keywords": [
+    "fetch",
+    "logging",
+    "pino",
+    "plugin",
+    "typescript"
+  ],
+  "homepage": "https://github.com/okfetch/okfetch#readme",
+  "bugs": {
+    "url": "https://github.com/okfetch/okfetch/issues"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/okfetch/okfetch.git"
+  },
   "files": [
-    "index.ts"
+    "dist"
   ],
   "type": "module",
   "sideEffects": false,
-  "main": "./index.ts",
-  "module": "./index.ts",
-  "types": "./index.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
-      "types": "./index.ts",
-      "import": "./index.ts",
-      "default": "./index.ts"
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.mjs"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "pino": "^10.3.1"
   },
   "devDependencies": {
-    "@kanonic/fetch": "workspace:*",
+    "@okfetch/fetch": "^0.1.0",
     "@types/bun": "latest"
   },
   "peerDependencies": {
-    "@kanonic/fetch": "*",
+    "@okfetch/fetch": "^0.1.0",
     "pino": "^10.3.1",
     "typescript": "^5"
   }

@@ -1,12 +1,12 @@
-import type { KanonicPlugin } from "@kanonic/fetch";
+import type { OkfetchPlugin } from "@okfetch/fetch";
 import pino from "pino";
 
-type LoggerOptions = {
+export type LoggerOptions = {
   pinoOptions?: pino.LoggerOptions;
   logDataOnSuccess?: boolean;
 };
 
-export const logger = (options?: LoggerOptions) => {
+export const logger = (options?: LoggerOptions): OkfetchPlugin => {
   const pinoLogger = pino(options?.pinoOptions);
 
   return {
@@ -37,5 +37,5 @@ export const logger = (options?: LoggerOptions) => {
         );
       },
     },
-  } satisfies KanonicPlugin;
+  } satisfies OkfetchPlugin;
 };

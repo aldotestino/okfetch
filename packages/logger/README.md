@@ -1,8 +1,8 @@
-# @kanonic/logger
+# @okfetch/logger
 
-`@kanonic/logger` is a small `pino`-powered plugin for kanonic request lifecycles.
+`@okfetch/logger` is a small `pino`-powered plugin for okfetch request lifecycles.
 
-It gives you a ready-made `KanonicPlugin` that logs:
+It gives you a ready-made `OkfetchPlugin` that logs:
 
 - outbound requests
 - successful responses
@@ -14,20 +14,20 @@ Use it when you want sensible request logging without writing your own plugin fr
 ## Installation
 
 ```bash
-bun add @kanonic/logger @kanonic/fetch pino
+bun add @okfetch/logger @okfetch/fetch pino
 ```
 
 ```bash
-npm install @kanonic/logger @kanonic/fetch pino
+npm install @okfetch/logger @okfetch/fetch pino
 ```
 
 ## Usage
 
 ```ts
-import { kanonic } from "@kanonic/fetch";
-import { logger } from "@kanonic/logger";
+import { okfetch } from "@okfetch/fetch";
+import { logger } from "@okfetch/logger";
 
-const result = await kanonic("https://example.com/health", {
+const result = await okfetch("https://example.com/health", {
   plugins: [
     logger({
       logDataOnSuccess: true,
@@ -63,8 +63,8 @@ Example log flow:
 - or request failed with tagged error
 - or request is being retried
 
-## Relationship To `@kanonic/fetch`
+## Relationship To `@okfetch/fetch`
 
-This package is just a plugin built on top of the public `KanonicPlugin` interface from `@kanonic/fetch`.
+This package is just a plugin built on top of the public `OkfetchPlugin` interface from `@okfetch/fetch`.
 
 If you need custom log formatting, request correlation, redaction, or tracing metadata, you can use this package as-is or as a starting point for your own plugin.

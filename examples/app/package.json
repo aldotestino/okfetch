@@ -1,5 +1,5 @@
 {
-  "name": "@kanonic/app",
+  "name": "@okfetch/app",
   "private": true,
   "type": "module",
   "module": "index.ts",
@@ -8,9 +8,9 @@
     "start": "bun run index.ts"
   },
   "dependencies": {
-    "@kanonic/api": "workspace:*",
-    "@kanonic/fetch": "workspace:*",
-    "@kanonic/logger": "workspace:*",
+    "@okfetch/api": "workspace:*",
+    "@okfetch/fetch": "workspace:*",
+    "@okfetch/logger": "workspace:*",
     "better-result": "^2.7.0",
     "zod": "^4.3.5"
   },

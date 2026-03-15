@@ -8,14 +8,14 @@ export {
 } from "./errors";
 export type {
   Auth,
-  KanonicError,
-  KanonicFetch,
-  KanonicOptions,
-  KanonicPlugin,
-  KanonicPluginHooks,
-  KanonicSuccess,
+  OkfetchError,
+  OkfetchFetch,
+  OkfetchOptions,
+  OkfetchPlugin,
+  OkfetchPluginHooks,
+  OkfetchSuccess,
   Method,
   RetryOptions,
 } from "./types";
 export { validateAllErrors, validateClientErrors } from "./presets";
-export { kanonic } from "./kanonic";
+export { okfetch } from "./okfetch";

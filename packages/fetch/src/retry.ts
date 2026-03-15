@@ -1,10 +1,10 @@
-import type { KanonicOptions, RetryableKanonicError } from "./types";
+import type { OkfetchOptions, RetryableOkfetchError } from "./types";
 
 export const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 export const computeRetryDelay = (
-  options: KanonicOptions,
+  options: OkfetchOptions,
   attempt: number
 ): number => {
   const { retry } = options;
@@ -30,14 +30,14 @@ export const computeRetryDelay = (
     : Math.min(rawDelay, retry.maxDelay);
 };
 
-const isRetryableByDefault = (error: RetryableKanonicError): boolean =>
+const isRetryableByDefault = (error: RetryableOkfetchError): boolean =>
   error._tag === "FetchError" ||
   error._tag === "TimeoutError" ||
   (error._tag === "ApiError" && error.statusCode >= 500);
 
 export const shouldRetryError = (
-  error: RetryableKanonicError,
-  options: KanonicOptions
+  error: RetryableOkfetchError,
+  options: OkfetchOptions
 ): boolean => {
   const { retry } = options;
   if (!retry) {

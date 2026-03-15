@@ -1,22 +1,41 @@
 {
-  "name": "@kanonic/fetch",
-  "version": "0.0.0",
+  "name": "@okfetch/fetch",
+  "version": "0.1.0",
   "description": "A type-safe fetch wrapper with validation, retries, plugins, and streaming.",
+  "keywords": [
+    "fetch",
+    "http",
+    "typescript",
+    "validation",
+    "zod"
+  ],
+  "homepage": "https://github.com/okfetch/okfetch#readme",
+  "bugs": {
+    "url": "https://github.com/okfetch/okfetch/issues"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/okfetch/okfetch.git"
+  },
   "files": [
-    "src"
+    "dist"
   ],
   "type": "module",
   "sideEffects": false,
-  "main": "./src/index.ts",
-  "module": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.mjs"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "devDependencies": {
     "@types/bun": "latest",

@@ -10,7 +10,7 @@ import type {
 } from "./errors";
 import type { Prettify } from "./type-utils";
 
-export type KanonicError<TErr> =
+export type OkfetchError<TErr> =
   | FetchError
   | ApiError<TErr>
   | ParseError
@@ -18,7 +18,7 @@ export type KanonicError<TErr> =
   | ValidationError
   | TimeoutError;
 
-export type RetryableKanonicError =
+export type RetryableOkfetchError =
   | FetchError
   | ApiError<unknown>
   | TimeoutError;
@@ -57,7 +57,7 @@ type FixedRetryOptions = {
    * If not provided, FetchError, TimeoutError, and ApiError with status >= 500
    * are retried by default.
    */
-  shouldRetry?: (error: RetryableKanonicError) => boolean;
+  shouldRetry?: (error: RetryableOkfetchError) => boolean;
 };
 
 type LinearRetryOptions = {
@@ -75,7 +75,7 @@ type LinearRetryOptions = {
    * If not provided, FetchError, TimeoutError, and ApiError with status >= 500
    * are retried by default.
    */
-  shouldRetry?: (error: RetryableKanonicError) => boolean;
+  shouldRetry?: (error: RetryableOkfetchError) => boolean;
 };
 
 type ExponentialRetryOptions = {
@@ -93,7 +93,7 @@ type ExponentialRetryOptions = {
    * If not provided, FetchError, TimeoutError, and ApiError with status >= 500
    * are retried by default.
    */
-  shouldRetry?: (error: RetryableKanonicError) => boolean;
+  shouldRetry?: (error: RetryableOkfetchError) => boolean;
 };
 
 export type RetryOptions =
@@ -101,101 +101,101 @@ export type RetryOptions =
   | LinearRetryOptions
   | ExponentialRetryOptions;
 
-export type KanonicBody = Exclude<RequestInit["body"], undefined>;
-export type KanonicFetch = (
+export type OkfetchBody = Exclude<RequestInit["body"], undefined>;
+export type OkfetchFetch = (
   input: string | URL | Request,
   init?: RequestInit
 ) => Promise<Response>;
 
-export type StreamChunkValue<Options extends KanonicOptions> =
+export type StreamChunkValue<Options extends OkfetchOptions> =
   Options["outputSchema"] extends ZodType
     ? Infer<Options["outputSchema"]>
     : unknown;
 
-export type KanonicSuccess<
-  Options extends KanonicOptions,
+export type OkfetchSuccess<
+  Options extends OkfetchOptions,
   TRes = StreamChunkValue<Options>,
 > = Options["stream"] extends true ? ReadableStream<TRes> : TRes;
 
-export type KanonicPluginInitInput = {
+export type OkfetchPluginInitInput = {
   url: string;
-  options: KanonicOptions;
+  options: OkfetchOptions;
 };
 
-export type KanonicRequestContext = Prettify<
+export type OkfetchRequestContext = Prettify<
   Omit<RequestInit, "body" | "headers" | "method" | "signal"> & {
     url: URL;
     method: Method | Uppercase<string>;
     headers: Headers;
-    body?: KanonicBody;
+    body?: OkfetchBody;
     signal: AbortSignal;
   }
 >;
 
-export type KanonicPluginHooks<TData = unknown, TErr = unknown> = {
+export type OkfetchPluginHooks<TData = unknown, TErr = unknown> = {
   onRequest?:
-    | ((context: KanonicRequestContext) => KanonicRequestContext | undefined)
+    | ((context: OkfetchRequestContext) => OkfetchRequestContext | undefined)
     | ((
-        context: KanonicRequestContext
-      ) => Promise<KanonicRequestContext | undefined>);
+        context: OkfetchRequestContext
+      ) => Promise<OkfetchRequestContext | undefined>);
   onResponse?:
     | ((
-        context: KanonicRequestContext,
+        context: OkfetchRequestContext,
         response: Response
       ) => Response | undefined)
     | ((
-        context: KanonicRequestContext,
+        context: OkfetchRequestContext,
         response: Response
       ) => Promise<Response | undefined>);
   onSuccess?:
     | ((
-        context: KanonicRequestContext,
+        context: OkfetchRequestContext,
         response: Response,
         data: TData
       ) => void)
     | ((
-        context: KanonicRequestContext,
+        context: OkfetchRequestContext,
         response: Response,
         data: TData
       ) => Promise<void>);
   onFail?:
     | ((
-        context: KanonicRequestContext,
+        context: OkfetchRequestContext,
         response: Response | undefined,
-        error: KanonicError<TErr>
+        error: OkfetchError<TErr>
       ) => void)
     | ((
-        context: KanonicRequestContext,
+        context: OkfetchRequestContext,
         response: Response | undefined,
-        error: KanonicError<TErr>
+        error: OkfetchError<TErr>
       ) => Promise<void>);
   onRetry?:
     | ((
-        context: KanonicRequestContext,
+        context: OkfetchRequestContext,
         response: Response | undefined,
-        error: RetryableKanonicError,
+        error: RetryableOkfetchError,
         attempt: number
       ) => void)
     | ((
-        context: KanonicRequestContext,
+        context: OkfetchRequestContext,
         response: Response | undefined,
-        error: RetryableKanonicError,
+        error: RetryableOkfetchError,
         attempt: number
       ) => Promise<void>);
 };
 
-export type KanonicPlugin<TData = unknown, TErr = unknown> = {
+export type OkfetchPlugin<TData = unknown, TErr = unknown> = {
   name: string;
   version: string;
   init?:
-    | ((input: KanonicPluginInitInput) => KanonicPluginInitInput | undefined)
+    | ((input: OkfetchPluginInitInput) => OkfetchPluginInitInput | undefined)
     | ((
-        input: KanonicPluginInitInput
-      ) => Promise<KanonicPluginInitInput | undefined>);
-  hooks?: KanonicPluginHooks<TData, TErr>;
+        input: OkfetchPluginInitInput
+      ) => Promise<OkfetchPluginInitInput | undefined>);
+  hooks?: OkfetchPluginHooks<TData, TErr>;
 };
 
-export type KanonicOptions = Prettify<
+export type OkfetchOptions = Prettify<
   Omit<RequestInit, "body" | "headers"> & {
     method?: Method;
     headers?: Record<string, string>;
@@ -210,12 +210,12 @@ export type KanonicOptions = Prettify<
       string | number | boolean | (string | number | boolean)[]
     >;
     body?: unknown;
-    fetch?: KanonicFetch;
+    fetch?: OkfetchFetch;
     timeout?: number;
     stream?: boolean;
     validateOutput?: boolean;
     shouldValidateError?: (statusCode: number) => boolean;
-    plugins?: KanonicPlugin[];
+    plugins?: OkfetchPlugin[];
     /** Retry configuration. Supports "fixed", "linear" and "exponential" backoff strategies. */
     retry?: RetryOptions;
     /** @internal */

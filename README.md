@@ -1,14 +1,14 @@
-[![CI](https://github.com/aldotestino/kanonic/actions/workflows/ci.yml/badge.svg)](https://github.com/aldotestino/kanonic/actions/workflows/ci.yml)
+[![CI](https://github.com/okfetch/okfetch/actions/workflows/ci.yml/badge.svg)](https://github.com/okfetch/okfetch/actions/workflows/ci.yml)
 
-# kanonic
+# okfetch
 
-`kanonic` is a small family of TypeScript-first HTTP packages built around one idea: make `fetch` safer and more composable without hiding how the web platform works.
+`okfetch` is a small family of TypeScript-first HTTP packages built around one idea: make `fetch` safer and more composable without hiding how the web platform works.
 
 The repo is split into focused packages:
 
-- `@kanonic/fetch` for direct typed requests with validation, retries, plugins, timeouts, auth, and streaming
-- `@kanonic/api` for schema-defined endpoint trees that generate a typed API client
-- `@kanonic/logger` for a ready-made `pino` plugin you can drop into request flows
+- `@okfetch/fetch` for direct typed requests with validation, retries, plugins, timeouts, auth, and streaming
+- `@okfetch/api` for schema-defined endpoint trees that generate a typed API client
+- `@okfetch/logger` for a ready-made `pino` plugin you can drop into request flows
 
 All request execution is based on [`better-result`](https://github.com/dmmulroy/better-result), so success and failure stay explicit as data instead of being pushed into exception-based control flow.
 
@@ -16,17 +16,17 @@ All request execution is based on [`better-result`](https://github.com/dmmulroy/
 
 | Package           | What it does                                                       | Best for                                                 |
 | ----------------- | ------------------------------------------------------------------ | -------------------------------------------------------- |
-| `@kanonic/fetch`  | Direct `fetch` wrapper with runtime validation and lifecycle hooks | Low-level requests and shared transport config           |
-| `@kanonic/api`    | Typed API client generated from endpoint definitions               | Larger applications with repeated API calls              |
-| `@kanonic/logger` | `pino`-based plugin for kanonic hooks                              | Request/response logging without writing your own plugin |
+| `@okfetch/fetch`  | Direct `fetch` wrapper with runtime validation and lifecycle hooks | Low-level requests and shared transport config           |
+| `@okfetch/api`    | Typed API client generated from endpoint definitions               | Larger applications with repeated API calls              |
+| `@okfetch/logger` | `pino`-based plugin for okfetch hooks                              | Request/response logging without writing your own plugin |
 
 Package-level docs:
 
-- [packages/fetch/README.md](/Users/aldotestino/Developer/kanonic/packages/fetch/README.md)
-- [packages/api/README.md](/Users/aldotestino/Developer/kanonic/packages/api/README.md)
-- [packages/logger/README.md](/Users/aldotestino/Developer/kanonic/packages/logger/README.md)
+- [packages/fetch/README.md](/Users/aldotestino/Developer/okfetch/packages/fetch/README.md)
+- [packages/api/README.md](/Users/aldotestino/Developer/okfetch/packages/api/README.md)
+- [packages/logger/README.md](/Users/aldotestino/Developer/okfetch/packages/logger/README.md)
 
-## Why kanonic
+## Why okfetch
 
 - Validate response payloads with Zod before they reach business logic
 - Validate endpoint `body`, `params`, and `query` before a request is sent
@@ -39,39 +39,39 @@ Package-level docs:
 ### Direct fetch usage
 
 ```bash
-bun add @kanonic/fetch better-result zod
+bun add @okfetch/fetch better-result zod
 ```
 
 ```bash
-npm install @kanonic/fetch better-result zod
+npm install @okfetch/fetch better-result zod
 ```
 
 ### Typed API client usage
 
 ```bash
-bun add @kanonic/api @kanonic/fetch better-result zod
+bun add @okfetch/api @okfetch/fetch better-result zod
 ```
 
 ```bash
-npm install @kanonic/api @kanonic/fetch better-result zod
+npm install @okfetch/api @okfetch/fetch better-result zod
 ```
 
 ### Logging plugin
 
 ```bash
-bun add @kanonic/logger @kanonic/fetch pino
+bun add @okfetch/logger @okfetch/fetch pino
 ```
 
 ```bash
-npm install @kanonic/logger @kanonic/fetch pino
+npm install @okfetch/logger @okfetch/fetch pino
 ```
 
 ## Quick Start
 
-### 1. Direct requests with `@kanonic/fetch`
+### 1. Direct requests with `@okfetch/fetch`
 
 ```ts
-import { kanonic } from "@kanonic/fetch";
+import { okfetch } from "@okfetch/fetch";
 import { z } from "zod/v4";
 
 const todoSchema = z.object({
@@ -81,7 +81,7 @@ const todoSchema = z.object({
   userId: z.number(),
 });
 
-const result = await kanonic("https://jsonplaceholder.typicode.com/todos/1", {
+const result = await okfetch("https://jsonplaceholder.typicode.com/todos/1", {
   outputSchema: todoSchema,
 });
 
@@ -91,10 +91,10 @@ result.match({
 });
 ```
 
-### 2. Typed clients with `@kanonic/api`
+### 2. Typed clients with `@okfetch/api`
 
 ```ts
-import { createApi, createEndpoints } from "@kanonic/api";
+import { createApi, createEndpoints } from "@okfetch/api";
 import { z } from "zod/v4";
 
 const todoSchema = z.object({
@@ -132,24 +132,24 @@ const api = createApi({
 const result = await api.todos.get({ params: { id: 1 } });
 ```
 
-### 3. Logging with `@kanonic/logger`
+### 3. Logging with `@okfetch/logger`
 
 ```ts
-import { kanonic } from "@kanonic/fetch";
-import { logger } from "@kanonic/logger";
+import { okfetch } from "@okfetch/fetch";
+import { logger } from "@okfetch/logger";
 
-const result = await kanonic("https://example.com/health", {
+const result = await okfetch("https://example.com/health", {
   plugins: [logger()],
 });
 ```
 
 ## How The Packages Fit Together
 
-`@kanonic/fetch` is the transport core. It owns request execution, retries, streaming support, auth, plugin execution, timeout behavior, and parsing.
+`@okfetch/fetch` is the transport core. It owns request execution, retries, streaming support, auth, plugin execution, timeout behavior, and parsing.
 
-`@kanonic/api` sits on top of `@kanonic/fetch`. It turns endpoint definitions into typed client methods and injects request validation based on the schemas attached to each endpoint.
+`@okfetch/api` sits on top of `@okfetch/fetch`. It turns endpoint definitions into typed client methods and injects request validation based on the schemas attached to each endpoint.
 
-`@kanonic/logger` is optional sugar. It is just a plugin package built on the public `KanonicPlugin` interface from `@kanonic/fetch`.
+`@okfetch/logger` is optional sugar. It is just a plugin package built on the public `OkfetchPlugin` interface from `@okfetch/fetch`.
 
 ## Core Concepts
 
@@ -161,22 +161,22 @@ That means callers can use `.isOk()`, `.isErr()`, `.map()`, `.match()`, and othe
 
 ### Validation
 
-`@kanonic/fetch` can validate:
+`@okfetch/fetch` can validate:
 
 - successful response bodies with `outputSchema`
 - structured API error payloads with `apiErrorDataSchema`
 - stream chunks when `stream: true` is enabled
 
-`@kanonic/api` adds request-side validation for:
+`@okfetch/api` adds request-side validation for:
 
 - `body`
 - `params`
 - `query`
 
-Helpers from `@kanonic/fetch`:
+Helpers from `@okfetch/fetch`:
 
 ```ts
-import { validateAllErrors, validateClientErrors } from "@kanonic/fetch";
+import { validateAllErrors, validateClientErrors } from "@okfetch/fetch";
 ```
 
 - `validateClientErrors` validates only `4xx` responses
@@ -193,7 +193,7 @@ Retries support:
 You can set them globally or per request:
 
 ```ts
-await kanonic("https://api.example.com/users/1", {
+await okfetch("https://api.example.com/users/1", {
   retry: {
     attempts: 3,
     initialDelay: 200,
@@ -221,10 +221,10 @@ This makes it easy to add logging, tracing, metrics, request rewriting, custom a
 Set `stream: true` to receive a `ReadableStream`.
 
 ```ts
-import { kanonic } from "@kanonic/fetch";
+import { okfetch } from "@okfetch/fetch";
 import { z } from "zod/v4";
 
-const result = await kanonic("https://example.com/events", {
+const result = await okfetch("https://example.com/events", {
   stream: true,
   outputSchema: z.object({
     id: z.number(),
@@ -237,7 +237,7 @@ Each SSE `data:` chunk is parsed independently. If you pass an `outputSchema`, e
 
 ## Error Model
 
-`@kanonic/fetch` returns tagged errors:
+`@okfetch/fetch` returns tagged errors:
 
 - `FetchError`
 - `TimeoutError`
@@ -256,7 +256,7 @@ Each SSE `data:` chunk is parsed independently. If you pass an `outputSchema`, e
 
 ## Example App
 
-A small runnable example lives in [examples/app/index.ts](/Users/aldotestino/Developer/kanonic/examples/app/index.ts).
+A small runnable example lives in [examples/app/index.ts](/Users/aldotestino/Developer/okfetch/examples/app/index.ts).
 
 Run it with:
 
@@ -266,7 +266,7 @@ bun run --cwd examples/app dev
 
 It demonstrates:
 
-- one direct `kanonic(...)` call
+- one direct `okfetch(...)` call
 - one generated typed API client
 - one request-side validation failure
 

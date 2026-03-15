@@ -1,4 +1,5 @@
 {
+  "exclude": ["**/dist/**", "node_modules"],
   "compilerOptions": {
     // Environment setup & latest features
     "lib": ["ESNext"],
@@ -12,9 +13,9 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@kanonic/api": ["./packages/api/src/index.ts"],
-      "@kanonic/fetch": ["./packages/fetch/src/index.ts"],
-      "@kanonic/logger": ["./packages/logger/index.ts"]
+      "@okfetch/api": ["./packages/api/src/index.ts"],
+      "@okfetch/fetch": ["./packages/fetch/src/index.ts"],
+      "@okfetch/logger": ["./packages/logger/index.ts"]
     },
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
