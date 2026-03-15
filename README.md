@@ -7,7 +7,7 @@
 It gives you two layers:
 
 - `kanonic(url, options)` for one-off requests
-- `createEndpoints` + `createApi` for typed API clients generated from schemas
+- `@kanonic/api` for typed API clients generated from schemas
 
 Every request returns a `Result`, so success and failure stay explicit without relying on thrown exceptions in normal control flow.
 
@@ -19,6 +19,16 @@ bun add @kanonic/fetch zod better-result
 
 ```bash
 npm install @kanonic/fetch zod better-result
+```
+
+If you want the typed client builder too:
+
+```bash
+bun add @kanonic/api @kanonic/fetch
+```
+
+```bash
+npm install @kanonic/api @kanonic/fetch
 ```
 
 ## Why use it
@@ -56,7 +66,7 @@ result.match({
 ### Typed client
 
 ```ts
-import { createApi, createEndpoints } from "@kanonic/fetch";
+import { createApi, createEndpoints } from "@kanonic/api";
 import { z } from "zod/v4";
 
 const todoSchema = z.object({
@@ -115,7 +125,7 @@ It demonstrates:
 - one generated typed client
 - one validation error caught before a network call is sent
 
-See [examples/app/main.ts](/Users/aldotestino/Developer/kanonic/examples/app/main.ts).
+See [examples/app/index.ts](/Users/aldotestino/Developer/kanonic/examples/app/index.ts).
 
 ## Core Concepts
 
@@ -187,7 +197,7 @@ Plugins are optional. They can modify request input up front and observe the req
 `ApiService` is a thin class wrapper around `createApi` when you prefer an OO entrypoint.
 
 ```ts
-import { ApiService, createEndpoints } from "@kanonic/fetch";
+import { ApiService, createEndpoints } from "@kanonic/api";
 import { z } from "zod/v4";
 
 const endpoints = createEndpoints({

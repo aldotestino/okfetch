@@ -2,12 +2,13 @@
   "name": "@kanonic/app",
   "private": true,
   "type": "module",
-  "module": "main.ts",
+  "module": "index.ts",
   "scripts": {
-    "dev": "bun run main.ts",
-    "start": "bun run main.ts"
+    "dev": "bun run index.ts",
+    "start": "bun run index.ts"
   },
   "dependencies": {
+    "@kanonic/api": "workspace:*",
     "@kanonic/fetch": "workspace:*",
     "@kanonic/logger": "workspace:*",
     "better-result": "^2.7.0",

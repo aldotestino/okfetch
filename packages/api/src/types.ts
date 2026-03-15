@@ -1,8 +1,6 @@
-// oxlint-disable import/no-relative-parent-imports
 import type { Result } from "better-result";
+import type { KanonicError, KanonicOptions } from "packages/fetch/src";
 import type { infer as Infer, ZodType } from "zod/v4";
-
-import type { KanonicError, KanonicOptions } from "../types";
 
 export type EndpointRequestOverrides = Omit<
   KanonicOptions,
@@ -121,10 +119,6 @@ export type CreateApiOptions<
     validateOutput?: boolean;
   }
 >;
-
-export type IsEndpoint<TValue> = TValue extends { method: string }
-  ? true
-  : false;
 
 type Prettify<TValue> = {
   [TKey in keyof TValue]: TValue[TKey];

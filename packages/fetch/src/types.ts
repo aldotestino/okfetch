@@ -1,4 +1,4 @@
-import type { infer as Infer, ZodType } from "zod";
+import type { infer as Infer, ZodType } from "zod/v4";
 
 import type {
   ApiError,

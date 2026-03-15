@@ -18,13 +18,4 @@ export type {
   RetryOptions,
 } from "./types";
 export { validateAllErrors, validateClientErrors } from "./presets";
-export { ApiService, createApi, createEndpoints } from "./client";
 export { kanonic } from "./kanonic";
-export type {
-  ApiErrors,
-  ApiClient,
-  CreateApiOptions,
-  Endpoint,
-  EndpointCallOptions,
-  EndpointFunction,
-} from "./client";

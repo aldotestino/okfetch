@@ -1,5 +1,5 @@
 import { TaggedError } from "better-result";
-import type { ZodError } from "zod";
+import type { ZodError } from "zod/v4";
 
 export class FetchError extends TaggedError("FetchError")<{
   readonly message: string;

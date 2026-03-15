@@ -1,7 +1,6 @@
-// oxlint-disable import/no-relative-parent-imports
-import { ValidationError } from "../errors";
-import { kanonic } from "../kanonic";
-import type { KanonicOptions, KanonicPlugin } from "../types";
+import type { KanonicOptions, KanonicPlugin } from "packages/fetch/src";
+import { ValidationError, kanonic } from "packages/fetch/src";
+
 import type {
   ApiClient,
   CreateApiOptions,
@@ -148,7 +147,7 @@ const buildEndpointFn = <TEndpoint extends EndpointDefinition, TGlobalError>(
       validateOutput,
     };
 
-    return kanonic(options.stream ? endpoint.path : endpoint.path, options);
+    return kanonic(endpoint.path, options);
   };
 
   return fn as EndpointFunction<TEndpoint, TGlobalError>;

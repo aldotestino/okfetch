@@ -1,10 +1,9 @@
 // oxlint-disable jest/no-conditional-in-test
-// oxlint-disable import/no-relative-parent-imports
 import { describe, expect, test } from "bun:test";
 
+import type { KanonicFetch, KanonicPlugin } from "packages/fetch/src";
 import { z } from "zod/v4";
 
-import type { KanonicFetch, KanonicPlugin } from "../index";
 import { ApiService, createApi, createEndpoints } from "./index";
 
 const createMockFetch =
@@ -50,7 +49,7 @@ const collectStreamChunks = async <T>(
   return chunks;
 };
 
-describe("kanonic v2 client helpers", () => {
+describe("kanonic client package", () => {
   test("createApi returns a nested typed client", async () => {
     const mockFetch = createMockFetch((request) => {
       expect(request.url).toBe("https://api.example.com/users/7");

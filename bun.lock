@@ -18,6 +18,7 @@
     "examples/app": {
       "name": "@kanonic/app",
       "dependencies": {
+        "@kanonic/api": "workspace:*",
         "@kanonic/fetch": "workspace:*",
         "@kanonic/logger": "workspace:*",
         "better-result": "^2.7.0",
@@ -30,8 +31,26 @@
         "typescript": "^5",
       },
     },
-    "packages/kanonic": {
+    "packages/api": {
+      "name": "@kanonic/api",
+      "dependencies": {
+        "@kanonic/fetch": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "better-result": "^2.7.0",
+        "zod": "^4.3.6",
+      },
+      "peerDependencies": {
+        "@kanonic/fetch": "workspace:*",
+        "better-result": "^2.7.0",
+        "typescript": "^5",
+        "zod": "^4.3.6",
+      },
+    },
+    "packages/fetch": {
       "name": "@kanonic/fetch",
+      "version": "0.0.0",
       "devDependencies": {
         "@types/bun": "latest",
         "better-result": "^2.7.0",
@@ -62,9 +81,11 @@
 
     "@clack/prompts": ["@clack/prompts@1.1.0", "", { "dependencies": { "@clack/core": "1.1.0", "sisteransi": "^1.0.5" } }, "sha512-pkqbPGtohJAvm4Dphs2M8xE29ggupihHdy1x84HNojZuMtFsHiUlRvqD24tM2+XmI+61LlfNceM3Wr7U5QES5g=="],
 
+    "@kanonic/api": ["@kanonic/api@workspace:packages/api"],
+
     "@kanonic/app": ["@kanonic/app@workspace:examples/app"],
 
-    "@kanonic/fetch": ["@kanonic/fetch@workspace:packages/kanonic"],
+    "@kanonic/fetch": ["@kanonic/fetch@workspace:packages/fetch"],
 
     "@kanonic/logger": ["@kanonic/logger@workspace:packages/logger"],
 

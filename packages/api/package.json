@@ -1,0 +1,22 @@
+{
+  "name": "@kanonic/api",
+  "type": "module",
+  "module": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@kanonic/fetch": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "better-result": "^2.7.0",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@kanonic/fetch": "workspace:*",
+    "better-result": "^2.7.0",
+    "typescript": "^5",
+    "zod": "^4.3.6"
+  }
+}
