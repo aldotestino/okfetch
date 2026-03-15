@@ -7,6 +7,16 @@ import { z } from "zod/v4";
 import { ValidationError } from "./errors";
 import type { KanonicError, KanonicFetch, KanonicPlugin } from "./index";
 import { kanonic } from "./index";
+import { validateAllErrors, validateClientErrors } from "./presets";
+import { buildRequestContext } from "./request-context";
+import {
+  createApiError,
+  parseResponseData,
+  readResponseText,
+  shouldValidateErrorResponse,
+} from "./response";
+import { computeRetryDelay, shouldRetryError, sleep } from "./retry";
+import { createParsedStream } from "./stream";
 import type { KanonicPluginInitInput } from "./types";
 
 const createMockFetch =
@@ -624,5 +634,541 @@ describe("kanonic v2 plugins", () => {
     });
 
     expect(resultPromise).toBeInstanceOf(Promise);
+  });
+});
+
+describe("request context", () => {
+  test("builds urls, auth headers, and json bodies", () => {
+    const context = buildRequestContext("/todos/:id", {
+      auth: {
+        password: "secret",
+        type: "basic",
+        username: "alice",
+      },
+      baseURL: "https://api.example.com/v1",
+      body: {
+        done: false,
+        title: "Ship tests",
+      },
+      headers: {
+        "x-trace-id": "trace-123",
+      },
+      params: {
+        id: 42,
+      },
+      query: {
+        filter: "open",
+        tags: ["backend", "urgent"],
+      },
+    });
+
+    expect(context.method).toBe("POST");
+    expect(context.url.toString()).toBe(
+      "https://api.example.com/v1/todos/42?filter=open&tags=backend&tags=urgent"
+    );
+    expect(context.headers.get("authorization")).toBe("Basic YWxpY2U6c2VjcmV0");
+    expect(context.headers.get("x-trace-id")).toBe("trace-123");
+    expect(context.body).toBe('{"done":false,"title":"Ship tests"}');
+  });
+
+  test("supports custom auth, form bodies, and bodyless methods", () => {
+    const formContext = buildRequestContext("https://example.com/form", {
+      auth: {
+        prefix: "Token",
+        type: "custom",
+        value: "abc123",
+      },
+      body: {
+        tags: ["a", "b"],
+        title: "hello",
+      },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      method: "PUT",
+    });
+
+    expect(formContext.headers.get("authorization")).toBe("Token abc123");
+    expect(formContext.body).toBe("tags=a&tags=b&title=hello");
+
+    const headContext = buildRequestContext("https://example.com/head", {
+      auth: {
+        token: "token-123",
+        type: "bearer",
+      },
+      body: {
+        ignored: true,
+      },
+      method: "HEAD",
+    });
+
+    expect(headContext.headers.get("authorization")).toBe("Bearer token-123");
+    expect(headContext.body).toBeUndefined();
+  });
+
+  test("preserves direct body values", () => {
+    const directBody = new Blob(["hello"]);
+    const context = buildRequestContext("https://example.com/blob", {
+      body: directBody,
+      method: "PATCH",
+    });
+
+    expect(context.body).toBe(directBody);
+  });
+});
+
+describe("response helpers", () => {
+  test("parses and validates success payloads", () => {
+    const parsed = parseResponseData<{ id: number }>('{"id":1}', {
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+    });
+
+    expect(parsed.isOk()).toBe(true);
+    if (parsed.isOk()) {
+      expect(parsed.value).toEqual({ id: 1 });
+    }
+  });
+
+  test("returns parse and validation errors for invalid success payloads", () => {
+    const invalidJson = parseResponseData("not-json", {});
+    expect(invalidJson.isErr()).toBe(true);
+    if (invalidJson.isErr()) {
+      expect(invalidJson.error._tag).toBe("ParseError");
+    }
+
+    const invalidShape = parseResponseData('{"id":"bad"}', {
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+    });
+    expect(invalidShape.isErr()).toBe(true);
+    if (invalidShape.isErr()) {
+      expect(invalidShape.error._tag).toBe("ValidationError");
+    }
+  });
+
+  test("reads response text failures into ParseError", async () => {
+    const brokenResponse = {
+      text: () => {
+        throw new Error("cannot read");
+      },
+    } as unknown as Response;
+
+    const result = await readResponseText(brokenResponse);
+
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error._tag).toBe("ParseError");
+    }
+  });
+
+  test("creates typed api errors only when configured", () => {
+    expect(
+      shouldValidateErrorResponse(
+        {
+          apiErrorDataSchema: z.object({ code: z.string() }),
+          shouldValidateError: validateAllErrors,
+        },
+        500
+      )
+    ).toBe(true);
+
+    expect(
+      shouldValidateErrorResponse(
+        {
+          apiErrorDataSchema: z.object({ code: z.string() }),
+          shouldValidateError: validateClientErrors,
+        },
+        500
+      )
+    ).toBe(false);
+
+    const typed = createApiError<{ code: string }>(
+      new Response('{"code":"BAD"}', {
+        status: 400,
+        statusText: "Bad Request",
+      }),
+      '{"code":"BAD"}',
+      {
+        apiErrorDataSchema: z.object({ code: z.string() }),
+        shouldValidateError: validateClientErrors,
+      }
+    );
+
+    expect(typed.data).toEqual({ code: "BAD" });
+
+    const untyped = createApiError(
+      new Response("{bad json", {
+        status: 400,
+        statusText: "Bad Request",
+      }),
+      "{bad json",
+      {
+        apiErrorDataSchema: z.object({ code: z.string() }),
+        shouldValidateError: validateClientErrors,
+      }
+    );
+
+    expect(untyped.data).toBeUndefined();
+    expect(untyped.text).toBe("{bad json");
+  });
+});
+
+describe("retry helpers", () => {
+  test("computes fixed, linear, and exponential delays", () => {
+    expect(computeRetryDelay({}, 0)).toBe(0);
+
+    expect(
+      computeRetryDelay(
+        {
+          retry: {
+            attempts: 2,
+            delay: 25,
+            strategy: "fixed",
+          },
+        },
+        0
+      )
+    ).toBe(25);
+
+    expect(
+      computeRetryDelay(
+        {
+          retry: {
+            attempts: 2,
+            initialDelay: 100,
+            maxDelay: 250,
+            step: 80,
+            strategy: "linear",
+          },
+        },
+        3
+      )
+    ).toBe(250);
+
+    expect(
+      computeRetryDelay(
+        {
+          retry: {
+            attempts: 2,
+            factor: 3,
+            initialDelay: 50,
+            maxDelay: 400,
+            strategy: "exponential",
+          },
+        },
+        2
+      )
+    ).toBe(400);
+  });
+
+  test("applies default retry rules, limits, and custom overrides", () => {
+    expect(
+      shouldRetryError(
+        createApiError(
+          new Response("server down", {
+            status: 503,
+            statusText: "Unavailable",
+          }),
+          "server down",
+          {}
+        ),
+        {}
+      )
+    ).toBe(false);
+
+    expect(
+      shouldRetryError(
+        createApiError(
+          new Response("server down", {
+            status: 503,
+            statusText: "Unavailable",
+          }),
+          "server down",
+          {}
+        ),
+        {
+          retry: {
+            attempts: 2,
+            strategy: "fixed",
+          },
+        }
+      )
+    ).toBe(true);
+
+    expect(
+      shouldRetryError(
+        createApiError(
+          new Response("bad request", {
+            status: 400,
+            statusText: "Bad Request",
+          }),
+          "bad request",
+          {}
+        ),
+        {
+          retry: {
+            attempts: 2,
+            strategy: "fixed",
+          },
+        }
+      )
+    ).toBe(false);
+
+    expect(
+      shouldRetryError(
+        createApiError(
+          new Response("server down", {
+            status: 503,
+            statusText: "Unavailable",
+          }),
+          "server down",
+          {}
+        ),
+        {
+          _retryAttempt: 2,
+          retry: {
+            attempts: 2,
+            strategy: "fixed",
+          },
+        }
+      )
+    ).toBe(false);
+
+    expect(
+      shouldRetryError(
+        createApiError(
+          new Response("bad request", {
+            status: 400,
+            statusText: "Bad Request",
+          }),
+          "bad request",
+          {}
+        ),
+        {
+          retry: {
+            attempts: 1,
+            shouldRetry: () => true,
+            strategy: "fixed",
+          },
+        }
+      )
+    ).toBe(true);
+  });
+
+  test("sleep resolves asynchronously", async () => {
+    await expect(sleep(0)).resolves.toBeUndefined();
+  });
+});
+
+describe("stream helpers", () => {
+  test("parses buffered SSE chunks and ignores non-data lines", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("event: ping\n"));
+        controller.enqueue(encoder.encode('data: {"id":'));
+        controller.enqueue(encoder.encode("1}\n"));
+        controller.enqueue(encoder.encode("data: [DONE]\n"));
+        controller.close();
+      },
+    });
+
+    const parsed = createParsedStream<{ id: number }>(
+      stream,
+      z.object({
+        id: z.number(),
+      })
+    );
+
+    await expect(collectStreamChunks(parsed)).resolves.toEqual([{ id: 1 }]);
+  });
+
+  test("surfaces parse errors for invalid json stream chunks", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("data: {bad json}\n"));
+        controller.close();
+      },
+    });
+
+    const parsed = createParsedStream<{ id: number }>(
+      stream,
+      z.object({
+        id: z.number(),
+      })
+    );
+    const reader = parsed.getReader();
+
+    await expect(reader.read()).rejects.toMatchObject({
+      _tag: "ParseError",
+    });
+    reader.releaseLock();
+  });
+
+  test("flushes trailing buffered data at end of stream", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"id":"bad"}'));
+        controller.close();
+      },
+    });
+
+    const parsed = createParsedStream<{ id: number }>(
+      stream,
+      z.object({
+        id: z.number(),
+      })
+    );
+    const reader = parsed.getReader();
+
+    await expect(reader.read()).rejects.toMatchObject({
+      _tag: "ValidationError",
+      type: "output",
+    });
+    reader.releaseLock();
+  });
+
+  test("cancels the underlying reader when the parsed stream is cancelled", async () => {
+    const encoder = new TextEncoder();
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
+      start(controller) {
+        controller.enqueue(encoder.encode("data: hello\n"));
+      },
+    });
+
+    const parsed = createParsedStream<string>(stream);
+    const reader = parsed.getReader();
+
+    await reader.cancel();
+    reader.releaseLock();
+    expect(cancelled).toBe(true);
+  });
+});
+
+describe("kanonic edge cases", () => {
+  test("wraps onRequest and onResponse hook failures as PluginError", async () => {
+    const onRequestResult = await kanonic("https://example.com", {
+      plugins: [
+        {
+          name: "broken-request",
+          version: "1.0.0",
+          hooks: {
+            onRequest: () => {
+              throw new Error("boom");
+            },
+          },
+        },
+      ],
+    });
+
+    expect(onRequestResult.isErr()).toBe(true);
+    if (onRequestResult.isErr()) {
+      expect(onRequestResult.error).toMatchObject({
+        _tag: "PluginError",
+        hook: "onRequest",
+        pluginName: "broken-request",
+      });
+    }
+
+    const onResponseResult = await kanonic("https://example.com", {
+      fetch: createMockFetch(() => Response.json({ ok: true })),
+      plugins: [
+        {
+          name: "broken-response",
+          version: "1.0.0",
+          hooks: {
+            onResponse: () => {
+              throw new Error("boom");
+            },
+          },
+        },
+      ],
+    });
+
+    expect(onResponseResult.isErr()).toBe(true);
+    if (onResponseResult.isErr()) {
+      expect(onResponseResult.error).toMatchObject({
+        _tag: "PluginError",
+        hook: "onResponse",
+        pluginName: "broken-response",
+      });
+    }
+  });
+
+  test("returns timeout and stream body parse failures", async () => {
+    const timeoutResult = await kanonic("https://example.com/timeout", {
+      fetch: createMockFetch(
+        (request) =>
+          new Promise<Response>((_resolve, reject) => {
+            request.signal.addEventListener("abort", () => {
+              reject(new DOMException("Aborted", "AbortError"));
+            });
+          })
+      ),
+      timeout: 10,
+    });
+
+    expect(timeoutResult.isErr()).toBe(true);
+    if (timeoutResult.isErr()) {
+      expect(timeoutResult.error).toMatchObject({
+        _tag: "TimeoutError",
+        timout: 10,
+      });
+    }
+
+    const nullBodyResult = await kanonic("https://example.com/stream", {
+      fetch: createMockFetch(() => new Response(null, { status: 200 })),
+      stream: true,
+    });
+
+    expect(nullBodyResult.isErr()).toBe(true);
+    if (nullBodyResult.isErr()) {
+      expect(nullBodyResult.error).toMatchObject({
+        _tag: "ParseError",
+        message: "Response body is null",
+      });
+    }
+  });
+
+  test("returns parse failures for unreadable or invalid success bodies", async () => {
+    const unreadableResponse = {
+      body: undefined,
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: () => {
+        throw new Error("cannot read");
+      },
+    } as unknown as Response;
+
+    const unreadableResult = await kanonic("https://example.com/unreadable", {
+      fetch: createMockFetch(() => unreadableResponse),
+    });
+
+    expect(unreadableResult.isErr()).toBe(true);
+    if (unreadableResult.isErr()) {
+      expect(unreadableResult.error._tag).toBe("ParseError");
+    }
+
+    const invalidJsonResult = await kanonic(
+      "https://example.com/invalid-json",
+      {
+        fetch: createMockFetch(() => new Response("not-json")),
+      }
+    );
+
+    expect(invalidJsonResult.isErr()).toBe(true);
+    if (invalidJsonResult.isErr()) {
+      expect(invalidJsonResult.error._tag).toBe("ParseError");
+    }
   });
 });
