@@ -2,84 +2,86 @@
 
 # kanonic
 
-`kanonic` is a type-safe wrapper around `fetch` built on top of [`better-result`](https://github.com/dmmulroy/better-result).
+`kanonic` is a type-safe wrapper around `fetch` with Zod validation and `Result`-based error handling.
 
 It gives you two layers:
 
-- `kanonic(url, options)` for direct calls with typed results, retries, plugins, validation, and streaming
-- `createEndpoints` + `createApi` + `ApiService` for building typed trees of API methods from Zod schemas
+- `kanonic(url, options)` for one-off requests
+- `createEndpoints` + `createApi` for typed API clients generated from schemas
 
-Every request returns a `Result`, so callers handle success and failure explicitly instead of relying on thrown exceptions.
+Every request returns a `Result`, so success and failure stay explicit without relying on thrown exceptions in normal control flow.
 
 ## Installation
 
 ```bash
-# bun
 bun add @kanonic/fetch zod better-result
+```
 
-# npm
+```bash
 npm install @kanonic/fetch zod better-result
 ```
 
-## Direct Usage
+## Why use it
+
+- Validate request input and response output with Zod
+- Generate typed client methods from a single endpoint tree
+- Handle failures as data with `Result`
+- Add retries, timeouts, auth, plugins, and streaming on top of standard `fetch`
+
+## Quick Start
+
+### Direct request
 
 ```ts
 import { kanonic } from "@kanonic/fetch";
 import { z } from "zod/v4";
 
+const todoSchema = z.object({
+  completed: z.boolean(),
+  id: z.number(),
+  title: z.string(),
+  userId: z.number(),
+});
+
 const result = await kanonic("https://jsonplaceholder.typicode.com/todos/1", {
-  outputSchema: z.object({
-    id: z.number(),
-    title: z.string(),
-    completed: z.boolean(),
-    userId: z.number(),
-  }),
+  outputSchema: todoSchema,
 });
 
 result.match({
-  ok: (todo) => console.log(todo.title),
   err: (error) => console.error(error._tag, error.message),
+  ok: (todo) => console.log(todo.title),
 });
 ```
 
-## Typed Client
+### Typed client
 
 ```ts
-import {
-  createApi,
-  createEndpoints,
-  validateClientErrors,
-} from "@kanonic/fetch";
+import { createApi, createEndpoints } from "@kanonic/fetch";
 import { z } from "zod/v4";
 
 const todoSchema = z.object({
-  id: z.number(),
-  userId: z.number(),
-  title: z.string(),
   completed: z.boolean(),
-});
-
-const apiErrorSchema = z.object({
-  code: z.string(),
-  message: z.string(),
+  id: z.number(),
+  title: z.string(),
+  userId: z.number(),
 });
 
 const endpoints = createEndpoints({
   todos: {
-    getById: {
+    get: {
       method: "GET",
-      path: "/todos/:id",
-      params: z.object({ id: z.number() }),
       output: todoSchema,
+      params: z.object({ id: z.number() }),
+      path: "/todos/:id",
     },
     create: {
-      method: "POST",
-      path: "/todos",
       body: z.object({
         title: z.string().min(1),
         userId: z.number(),
       }),
+      method: "POST",
       output: todoSchema,
+      path: "/todos",
     },
   },
 });
@@ -87,32 +89,82 @@ const endpoints = createEndpoints({
 const api = createApi({
   baseURL: "https://jsonplaceholder.typicode.com",
   endpoints,
-  errorSchema: apiErrorSchema,
-  shouldValidateError: validateClientErrors,
-  headers: { "x-client": "kanonic" },
 });
 
-const result = await api.todos.getById({ params: { id: 1 } });
+const result = await api.todos.get({ params: { id: 1 } });
 ```
 
-Endpoint calls use:
+Endpoint methods use:
 
-- first argument: `{ body, query, params }` for the schemas defined on that endpoint
-- second optional argument: per-call overrides like `headers`, `timeout`, `retry`, `signal`, `fetch`, `plugins`
+- the first argument for schema-backed `body`, `params`, and `query`
+- the optional second argument for overrides like `headers`, `timeout`, `retry`, `signal`, `fetch`, and `plugins`
 
-Zero-schema endpoints accept only the optional override argument.
+Endpoints without request schemas accept only the override argument.
 
-## Streaming
+## Example App
 
-Set `stream: true` on an endpoint or request to receive `ReadableStream<T>`.
+The example app is intentionally small and lives in one file:
+
+```bash
+bun run --cwd examples/app dev
+```
+
+It demonstrates:
+
+- one direct `kanonic(...)` request
+- one generated typed client
+- one validation error caught before a network call is sent
+
+See [examples/app/main.ts](/Users/aldotestino/Developer/kanonic/examples/app/main.ts).
+
+## Core Concepts
+
+### Validation
+
+`createApi` validates endpoint `body`, `params`, and `query` by default. Response validation is controlled with `validateOutput`.
+
+To validate structured API error bodies, pass an `errorSchema` and optionally control when it runs with `shouldValidateError`.
+
+Helpers are included:
 
 ```ts
-const streamResult = await kanonic<string>("https://example.com/events", {
-  stream: true,
+import { validateAllErrors, validateClientErrors } from "@kanonic/fetch";
+```
+
+- `validateClientErrors` validates only `4xx`
+- `validateAllErrors` validates `4xx` and `5xx`
+
+### Request configuration
+
+Global defaults go into `createApi(...)`, and per-call overrides win.
+
+```ts
+const api = createApi({
+  baseURL: "https://api.example.com",
+  endpoints,
+  auth: { type: "bearer", token: "secret" },
+  headers: { "x-app": "kanonic" },
+  timeout: 5000,
 });
 ```
 
-With an `outputSchema`, each SSE `data:` chunk is parsed and validated individually.
+```ts
+await api.todos.get(
+  { params: { id: 1 } },
+  {
+    timeout: 1000,
+    retry: {
+      attempts: 2,
+      initialDelay: 200,
+      strategy: "exponential",
+    },
+  }
+);
+```
+
+### Streaming
+
+Set `stream: true` on a request or endpoint to receive a typed `ReadableStream`.
 
 ```ts
 const result = await kanonic("https://example.com/events", {
@@ -124,143 +176,27 @@ const result = await kanonic("https://example.com/events", {
 });
 ```
 
-When using the typed client:
+Each SSE `data:` chunk is parsed independently and validated against `outputSchema`.
 
-```ts
-const endpoints = createEndpoints({
-  events: {
-    method: "GET",
-    path: "/events",
-    output: z.object({ id: z.number() }),
-    stream: true,
-  },
-});
-```
+### Plugins
 
-## Validation Knobs
+Plugins are optional. They can modify request input up front and observe the request lifecycle through hooks like `init`, `onRequest`, `onResponse`, `onSuccess`, `onFail`, and `onRetry`.
 
-`kanonic` and `createApi` support the main runtime validation controls:
+### ApiService
 
-- `validateInput?: boolean`
-  The typed client uses this to enable or disable body/query/params validation from endpoint schemas. Defaults to `true`.
-- `validateOutput?: boolean`
-  Controls response and stream-chunk output validation. Defaults to `true`.
-- `shouldValidateError?: (statusCode: number) => boolean`
-  Controls when an `errorSchema` should be applied. By default, error bodies are not parsed.
-
-Helpers are included:
-
-```ts
-import { validateAllErrors, validateClientErrors } from "@kanonic/fetch";
-```
-
-- `validateClientErrors` validates only `4xx`
-- `validateAllErrors` validates both `4xx` and `5xx`
-
-## Plugins
-
-Plugins can rewrite inputs before request normalization and observe or mutate the request lifecycle.
-
-```ts
-import type { KanonicPlugin } from "@kanonic/fetch";
-
-const loggerPlugin: KanonicPlugin = {
-  name: "logger",
-  version: "1.0.0",
-  hooks: {
-    onRequest(context) {
-      console.log("->", context.method, context.url);
-      return context;
-    },
-    onResponse(context, response) {
-      console.log("<-", response.status, context.url);
-      return response;
-    },
-    onFail(_context, _response, error) {
-      console.error(error._tag, error.message);
-    },
-  },
-};
-```
-
-Plugin hooks:
-
-- `init({ url, options })`
-- `onRequest(context)`
-- `onResponse(context, response)`
-- `onSuccess(context, response, data)`
-- `onFail(context, response, error)`
-- `onRetry(context, response, error, attempt)`
-
-The typed client uses the same plugin system internally to validate endpoint `body`, `query`, and `params` schemas before the request is sent.
-
-## Request Configuration
-
-Global defaults are passed directly to `createApi(...)`:
-
-```ts
-const api = createApi({
-  baseURL: "https://api.example.com",
-  endpoints,
-  auth: { type: "bearer", token: "secret" },
-  headers: { "x-app": "demo" },
-  timeout: 5000,
-  fetch: customFetch,
-});
-```
-
-Endpoint definitions can provide `requestOptions`, and per-call overrides win over both global and endpoint defaults.
-
-```ts
-const api = createApi({ baseURL, endpoints });
-
-await api.todos.getById(
-  { params: { id: 1 } },
-  {
-    headers: { "x-request-id": crypto.randomUUID() },
-    timeout: 1000,
-    retry: {
-      attempts: 2,
-      strategy: "exponential",
-      initialDelay: 200,
-    },
-  }
-);
-```
-
-## Error Model
-
-`kanonic` returns tagged errors:
-
-- `FetchError`
-- `TimeoutError`
-- `ApiError`
-- `ParseError`
-- `ValidationError`
-- `PluginError`
-
-`ValidationError.type` distinguishes the failing boundary:
-
-- `"body"`
-- `"query"`
-- `"params"`
-- `"output"`
-- `"error"`
-
-## ApiService
-
-`ApiService` keeps endpoint definitions at class-definition time and runtime config in the constructor.
+`ApiService` is a thin class wrapper around `createApi` when you prefer an OO entrypoint.
 
 ```ts
 import { ApiService, createEndpoints } from "@kanonic/fetch";
+import { z } from "zod/v4";
 
 const endpoints = createEndpoints({
   posts: {
     getById: {
       method: "GET",
-      path: "/posts/:id",
-      params: z.object({ id: z.number() }),
       output: z.object({ id: z.number(), title: z.string() }),
+      params: z.object({ id: z.number() }),
+      path: "/posts/:id",
     },
   },
 });
@@ -272,22 +208,21 @@ class BlogService extends ApiService(endpoints) {
 }
 ```
 
-## Examples
+## Error Types
 
-Updated runnable examples live in:
+`kanonic` returns tagged errors:
 
-- [`examples/app/client.ts`](/Users/aldotestino/Developer/kanonic/examples/app/client.ts)
-- [`examples/app/service.ts`](/Users/aldotestino/Developer/kanonic/examples/app/service.ts)
-- [`examples/app/stream.ts`](/Users/aldotestino/Developer/kanonic/examples/app/stream.ts)
-- [`examples/app/plugins.ts`](/Users/aldotestino/Developer/kanonic/examples/app/plugins.ts)
+- `FetchError`
+- `TimeoutError`
+- `ApiError`
+- `ParseError`
+- `ValidationError`
+- `PluginError`
 
-## Current Status
+`ValidationError.type` tells you which boundary failed:
 
-The canonical implementation now lives in [`packages/kanonic`](/Users/aldotestino/Developer/kanonic/packages/kanonic) and is published as `@kanonic/fetch`.
-
-The README and runnable examples reflect the current API surface:
-
-- direct `kanonic(...)` usage
-- typed clients via `createEndpoints`, `createApi`, and `ApiService`
-- plugin-based request lifecycle hooks
-- validation controls, retries, and streaming
+- `"body"`
+- `"query"`
+- `"params"`
+- `"output"`
+- `"error"`

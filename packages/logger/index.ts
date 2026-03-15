@@ -2,12 +2,12 @@ import type { KanonicPlugin } from "@kanonic/fetch";
 import pino from "pino";
 
 type LoggerOptions = {
-  pinoOptions: pino.LoggerOptions;
+  pinoOptions?: pino.LoggerOptions;
   logDataOnSuccess?: boolean;
 };
 
-export const logger = (options: LoggerOptions) => {
-  const pinoLogger = pino(options.pinoOptions);
+export const logger = (options?: LoggerOptions) => {
+  const pinoLogger = pino(options?.pinoOptions);
 
   return {
     name: "logger",
@@ -18,7 +18,7 @@ export const logger = (options: LoggerOptions) => {
         return ctx;
       },
       async onSuccess(_, response, data) {
-        if (options.logDataOnSuccess) {
+        if (options?.logDataOnSuccess) {
           pinoLogger.info(
             `Request succeeded with status ${response.status} and data: ${JSON.stringify(
               data
