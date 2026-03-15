@@ -1,6 +1,6 @@
 // oxlint-disable import/no-relative-parent-imports
 import { ValidationError } from "../errors";
-import { kanonic } from "../index";
+import { kanonic } from "../kanonic";
 import type { KanonicOptions, KanonicPlugin } from "../types";
 import type {
   ApiClient,

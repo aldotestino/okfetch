@@ -5,13 +5,9 @@ import type { Result } from "better-result";
 import { z } from "zod/v4";
 
 import { ValidationError } from "./errors";
-import type {
-  KanonicError,
-  KanonicFetch,
-  KanonicPlugin,
-  KanonicPluginInitInput,
-} from "./index";
+import type { KanonicError, KanonicFetch, KanonicPlugin } from "./index";
 import { kanonic } from "./index";
+import type { KanonicPluginInitInput } from "./types";
 
 const createMockFetch =
   (handler: (request: Request) => Response | Promise<Response>): KanonicFetch =>
