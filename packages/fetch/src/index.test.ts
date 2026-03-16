@@ -667,6 +667,7 @@ describe("request context", () => {
       "https://api.example.com/v1/todos/42?filter=open&tags=backend&tags=urgent"
     );
     expect(context.headers.get("authorization")).toBe("Basic YWxpY2U6c2VjcmV0");
+    expect(context.headers.get("content-type")).toBe("application/json");
     expect(context.headers.get("x-trace-id")).toBe("trace-123");
     expect(context.body).toBe('{"done":false,"title":"Ship tests"}');
   });
@@ -714,6 +715,48 @@ describe("request context", () => {
     });
 
     expect(context.body).toBe(directBody);
+  });
+
+  test("does not override an explicit content type for object bodies", () => {
+    const context = buildRequestContext("https://example.com/custom", {
+      body: { title: "hello" },
+      headers: {
+        "Content-Type": "application/merge-patch+json",
+      },
+      method: "PATCH",
+    });
+
+    expect(context.headers.get("content-type")).toBe(
+      "application/merge-patch+json"
+    );
+    expect(context.body).toBe('{"title":"hello"}');
+  });
+
+  test("keeps valid falsey JSON bodies", () => {
+    const zeroContext = buildRequestContext("https://example.com/zero", {
+      body: 0,
+    });
+    const nullContext = buildRequestContext("https://example.com/null", {
+      body: null,
+      method: "POST",
+    });
+    const emptyStringContext = buildRequestContext(
+      "https://example.com/empty-string",
+      {
+        body: "",
+        method: "POST",
+      }
+    );
+
+    expect(zeroContext.method).toBe("POST");
+    expect(zeroContext.headers.get("content-type")).toBe("application/json");
+    expect(zeroContext.body).toBe("0");
+
+    expect(nullContext.headers.get("content-type")).toBe("application/json");
+    expect(nullContext.body).toBe("null");
+
+    expect(emptyStringContext.headers.get("content-type")).toBeNull();
+    expect(emptyStringContext.body).toBe("");
   });
 });
 

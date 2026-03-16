@@ -49,31 +49,40 @@ const resolveUrl = (url: string, options: OkfetchOptions): URL => {
   return resolvedUrl;
 };
 
-const resolveHeaders = (options: OkfetchOptions): Headers => {
+const resolveHeaders = (
+  method: OkfetchRequestContext["method"],
+  options: OkfetchOptions
+): Headers => {
   const headers = new Headers(options.headers);
 
-  if (!options.auth) {
-    return headers;
+  if (options.auth) {
+    switch (options.auth.type) {
+      case "basic": {
+        const credentials = btoa(
+          `${options.auth.username}:${options.auth.password}`
+        );
+        headers.set("Authorization", `Basic ${credentials}`);
+        break;
+      }
+      case "bearer": {
+        headers.set("Authorization", `Bearer ${options.auth.token}`);
+        break;
+      }
+      default: {
+        headers.set(
+          "Authorization",
+          `${options.auth.prefix} ${options.auth.value}`
+        );
+      }
+    }
   }
 
-  switch (options.auth.type) {
-    case "basic": {
-      const credentials = btoa(
-        `${options.auth.username}:${options.auth.password}`
-      );
-      headers.set("Authorization", `Basic ${credentials}`);
-      break;
-    }
-    case "bearer": {
-      headers.set("Authorization", `Bearer ${options.auth.token}`);
-      break;
-    }
-    default: {
-      headers.set(
-        "Authorization",
-        `${options.auth.prefix} ${options.auth.value}`
-      );
-    }
+  const hasBody = !nonBodyMethods.has(method) && options.body !== undefined;
+  const shouldDefaultToJson =
+    hasBody && !headers.has("Content-Type") && !isDirectBody(options.body);
+
+  if (shouldDefaultToJson) {
+    headers.set("Content-Type", "application/json");
   }
 
   return headers;
@@ -84,7 +93,7 @@ const resolveBody = (
   options: OkfetchOptions,
   headers: Headers
 ): OkfetchBody | undefined => {
-  if (nonBodyMethods.has(method) || !options.body) {
+  if (nonBodyMethods.has(method) || options.body === undefined) {
     return undefined;
   }
 
@@ -121,8 +130,9 @@ export const buildRequestContext = (
   url: string,
   options: OkfetchOptions
 ): OkfetchRequestContext => {
-  const method = options.method ?? (options.body ? "POST" : "GET");
-  const headers = resolveHeaders(options);
+  const method =
+    options.method ?? (options.body === undefined ? "GET" : "POST");
+  const headers = resolveHeaders(method, options);
   const controller = new AbortController();
   const {
     apiErrorDataSchema: _apiErrorDataSchema,
