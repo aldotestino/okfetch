@@ -9,14 +9,14 @@
     "validation",
     "zod"
   ],
-  "homepage": "https://github.com/okfetch/okfetch#readme",
+  "homepage": "https://github.com/aldotestino/okfetch#readme",
   "bugs": {
-    "url": "https://github.com/okfetch/okfetch/issues"
+    "url": "https://github.com/aldotestino/okfetch/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/okfetch/okfetch.git"
+    "url": "git+https://github.com/aldotestino/okfetch.git"
   },
   "files": [
     "dist"
