@@ -1,4 +1,4 @@
-[![CI](https://github.com/aldotestino/okfetch/actions/workflows/ci.yml/badge.svg)](https://github.com/okfetch/okfetch/actions/workflows/ci.yml)
+[![CI](https://github.com/aldotestino/okfetch/actions/workflows/ci.yml/badge.svg)](https://github.com/aldotestino/okfetch/actions/workflows/ci.yml)
 
 # okfetch
 
