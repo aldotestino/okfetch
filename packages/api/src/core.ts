@@ -1,5 +1,5 @@
 import type { OkfetchOptions, OkfetchPlugin } from "@okfetch/fetch";
-import { ValidationError, okfetch } from "@okfetch/fetch";
+import { ValidationError, okfetch, validateSchema } from "@okfetch/fetch";
 
 import type {
   ApiClient,
@@ -23,40 +23,46 @@ const createValidationPlugin = (
 ): OkfetchPlugin => ({
   name: "okfetch-endpoint-validator",
   version: "1.0.0",
-  init: ({ options, url }) => {
+  init: async ({ options, url }) => {
     if (!enabled) {
       return { options, url };
     }
 
     if (endpoint.params) {
-      const paramsResult = endpoint.params.safeParse(options.params ?? {});
+      const paramsResult = await validateSchema(
+        endpoint.params,
+        options.params ?? {}
+      );
       if (!paramsResult.success) {
         throw new ValidationError({
+          issues: paramsResult.issues,
           type: "params",
           message: "Endpoint params did not match schema",
-          zodError: paramsResult.error,
         });
       }
     }
 
     if (endpoint.query) {
-      const queryResult = endpoint.query.safeParse(options.query ?? {});
+      const queryResult = await validateSchema(
+        endpoint.query,
+        options.query ?? {}
+      );
       if (!queryResult.success) {
         throw new ValidationError({
+          issues: queryResult.issues,
           type: "query",
           message: "Endpoint query did not match schema",
-          zodError: queryResult.error,
         });
       }
     }
 
     if (endpoint.body) {
-      const bodyResult = endpoint.body.safeParse(options.body);
+      const bodyResult = await validateSchema(endpoint.body, options.body);
       if (!bodyResult.success) {
         throw new ValidationError({
+          issues: bodyResult.issues,
           type: "body",
           message: "Endpoint body did not match schema",
-          zodError: bodyResult.error,
         });
       }
     }

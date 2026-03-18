@@ -1,13 +1,13 @@
 {
   "name": "@okfetch/fetch",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A type-safe fetch wrapper with validation, retries, plugins, and streaming.",
   "keywords": [
     "fetch",
     "http",
+    "standard-schema",
     "typescript",
-    "validation",
-    "zod"
+    "validation"
   ],
   "homepage": "https://github.com/aldotestino/okfetch#readme",
   "bugs": {
@@ -44,7 +44,6 @@
   },
   "peerDependencies": {
     "better-result": "^2.7.0",
-    "typescript": "^5",
-    "zod": "^4.3.6"
+    "typescript": "^5"
   }
 }

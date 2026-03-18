@@ -1,6 +1,7 @@
 import { Result } from "better-result";
 
 import { ApiError, ParseError, ValidationError } from "./errors";
+import { validateSchema } from "./schema";
 import type { OkfetchOptions } from "./types";
 
 export const shouldValidateErrorResponse = (
@@ -22,18 +23,22 @@ export const readResponseText = async (
     try: () => response.text(),
   });
 
-export const createApiError = <TErr>(
+export const createApiError = async <TErr>(
   response: Response,
   text: string,
   options: OkfetchOptions
-): ApiError<TErr> => {
+): Promise<ApiError<TErr>> => {
+  const errorDataSchema = options.apiErrorDataSchema;
   const baseError = new ApiError<TErr>({
     statusCode: response.status,
     statusText: response.statusText,
     text,
   });
 
-  if (!shouldValidateErrorResponse(options, response.status)) {
+  if (
+    errorDataSchema === undefined ||
+    !shouldValidateErrorResponse(options, response.status)
+  ) {
     return baseError;
   }
 
@@ -45,10 +50,11 @@ export const createApiError = <TErr>(
     return baseError;
   }
 
-  const parsedApiErrorData = options.apiErrorDataSchema?.safeParse(
+  const parsedApiErrorData = await validateSchema(
+    errorDataSchema,
     apiErrorDataResult.value
   );
-  if (!parsedApiErrorData?.success) {
+  if (!parsedApiErrorData.success) {
     return baseError;
   }
 
@@ -60,10 +66,10 @@ export const createApiError = <TErr>(
   });
 };
 
-export const parseResponseData = <TRes>(
+export const parseResponseData = async <TRes>(
   text: string,
   options: OkfetchOptions
-): Result<TRes, ParseError | ValidationError> => {
+): Promise<Result<TRes, ParseError | ValidationError>> => {
   const dataResult = Result.try({
     catch: (error) =>
       new ParseError({
@@ -80,13 +86,16 @@ export const parseResponseData = <TRes>(
     return Result.ok(dataResult.value as TRes);
   }
 
-  const parsedData = options.outputSchema.safeParse(dataResult.value);
+  const parsedData = await validateSchema(
+    options.outputSchema,
+    dataResult.value
+  );
   if (!parsedData.success) {
     return Result.err(
       new ValidationError({
+        issues: parsedData.issues,
         message: "Response body did not match output schema",
         type: "output",
-        zodError: parsedData.error,
       })
     );
   }

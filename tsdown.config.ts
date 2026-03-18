@@ -3,7 +3,7 @@ import { defineConfig } from "tsdown";
 const sharedConfig = defineConfig({
   clean: true,
   deps: {
-    neverBundle: [/^@okfetch\//, "better-result", "pino", /^zod(?:\/.*)?$/],
+    neverBundle: [/^@okfetch\//, "better-result", "pino"],
   },
   dts: true,
   format: ["esm", "cjs"],

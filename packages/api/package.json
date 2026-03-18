@@ -1,13 +1,13 @@
 {
   "name": "@okfetch/api",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A typed API client builder for okfetch based on endpoint schemas.",
   "keywords": [
     "api-client",
     "fetch",
+    "standard-schema",
     "typescript",
-    "validation",
-    "zod"
+    "validation"
   ],
   "homepage": "https://github.com/aldotestino/okfetch#readme",
   "bugs": {
@@ -38,7 +38,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@okfetch/fetch": "^0.2.0"
+    "@okfetch/fetch": "^0.3.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -46,9 +46,8 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@okfetch/fetch": "^0.2.0",
+    "@okfetch/fetch": "^0.3.0",
     "better-result": "^2.7.0",
-    "typescript": "^5",
-    "zod": "^4.3.6"
+    "typescript": "^5"
   }
 }

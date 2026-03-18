@@ -1,6 +1,11 @@
-import type { OkfetchError, OkfetchOptions } from "@okfetch/fetch";
+import type {
+  InferInput,
+  InferOutput,
+  OkfetchError,
+  OkfetchOptions,
+  StandardSchemaV1,
+} from "@okfetch/fetch";
 import type { Result } from "better-result";
-import type { infer as Infer, ZodType } from "zod/v4";
 
 export type EndpointRequestOverrides = Omit<
   OkfetchOptions,
@@ -19,11 +24,11 @@ export type EndpointRequestOverrides = Omit<
 export type EndpointDefinition = {
   method: NonNullable<OkfetchOptions["method"]>;
   path: `/${string}`;
-  body?: ZodType;
-  error?: ZodType;
-  output?: ZodType;
-  params?: ZodType;
-  query?: ZodType;
+  body?: StandardSchemaV1;
+  error?: StandardSchemaV1;
+  output?: StandardSchemaV1;
+  params?: StandardSchemaV1;
+  query?: StandardSchemaV1;
   requestOptions?: EndpointRequestOverrides;
   stream?: true;
 };
@@ -34,32 +39,34 @@ export type EndpointTree = {
 
 export type EndpointCallOptions<TEndpoint extends EndpointDefinition> =
   Prettify<
-    (TEndpoint["body"] extends ZodType
-      ? { body: Infer<TEndpoint["body"]> }
+    (TEndpoint["body"] extends StandardSchemaV1
+      ? { body: InferInput<TEndpoint["body"]> }
       : {}) &
-      (TEndpoint["params"] extends ZodType
-        ? { params: Infer<TEndpoint["params"]> }
+      (TEndpoint["params"] extends StandardSchemaV1
+        ? { params: InferInput<TEndpoint["params"]> }
         : {}) &
-      (TEndpoint["query"] extends ZodType
-        ? { query: Infer<TEndpoint["query"]> }
+      (TEndpoint["query"] extends StandardSchemaV1
+        ? { query: InferInput<TEndpoint["query"]> }
         : {})
   >;
 
 export type EndpointOutput<TEndpoint extends EndpointDefinition> =
-  TEndpoint["output"] extends ZodType ? Infer<TEndpoint["output"]> : unknown;
+  TEndpoint["output"] extends StandardSchemaV1
+    ? InferOutput<TEndpoint["output"]>
+    : unknown;
 
 export type EndpointError<
   TEndpoint extends EndpointDefinition,
   TGlobalError,
-> = TEndpoint["error"] extends ZodType
-  ? Infer<TEndpoint["error"]>
+> = TEndpoint["error"] extends StandardSchemaV1
+  ? InferOutput<TEndpoint["error"]>
   : TGlobalError;
 
 export type EndpointSuccess<TEndpoint extends EndpointDefinition> =
   TEndpoint["stream"] extends true
     ? ReadableStream<
-        TEndpoint["output"] extends ZodType
-          ? Infer<TEndpoint["output"]>
+        TEndpoint["output"] extends StandardSchemaV1
+          ? InferOutput<TEndpoint["output"]>
           : string
       >
     : EndpointOutput<TEndpoint>;
@@ -111,7 +118,7 @@ export type CreateApiOptions<
   EndpointRequestOverrides & {
     baseURL: string;
     endpoints: TTree;
-    errorSchema?: ZodType<TGlobalError>;
+    errorSchema?: StandardSchemaV1<unknown, TGlobalError>;
     shouldValidateError?: (statusCode: number) => boolean;
     validateInput?: boolean;
     validateOutput?: boolean;
