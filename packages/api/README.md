@@ -37,7 +37,7 @@ Types:
 - `EndpointRequestOverrides`
 - `EndpointFunction`
 - `ApiClient`
-- `ApiErrors`
+- `OkfetchError`
 - `CreateApiOptions`
 
 ## Quick Example

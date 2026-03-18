@@ -1,12 +1,12 @@
 export { ApiService, createApi, createEndpoints } from "./core";
+export type { OkfetchError } from "@okfetch/fetch";
 
 export type {
-  ApiErrors,
   ApiClient,
   ApiServiceClass,
   CreateApiOptions,
-  EndpointCallOptions,
   EndpointDefinition as Endpoint,
+  EndpointCallOptions,
   EndpointFunction,
   EndpointRequestOverrides,
   EndpointTree,

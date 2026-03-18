@@ -139,6 +139,30 @@ describe("okfetch v2 plugins", () => {
     }
   });
 
+  test("keeps non-stream return types when generics are provided without options", async () => {
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = createMockFetch(() =>
+      Response.json({ ok: true })
+    ) as typeof fetch;
+
+    try {
+      const resultPromise: Promise<
+        Result<unknown, OkfetchError<{ message: string }>>
+      > = okfetch<unknown, { message: string }>(
+        "https://example.com/typed-no-options"
+      );
+      const result = await resultPromise;
+
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value).toEqual({ ok: true });
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("executes init hooks in order and rewrites raw url and options", async () => {
     let finalInput: OkfetchPluginInitInput | undefined;
     let requestUrl = "";
@@ -659,6 +683,32 @@ describe("okfetch v2 plugins", () => {
     });
 
     expect(resultPromise).toBeInstanceOf(Promise);
+  });
+
+  test("infers schema-based result types for stream and non-stream options", () => {
+    const mockFetch = createMockFetch(() => Response.json({ id: 1 }));
+
+    const objectResultPromise: Promise<
+      Result<{ id: number }, OkfetchError<unknown>>
+    > = okfetch("https://example.com/object", {
+      fetch: mockFetch,
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+    });
+
+    const streamResultPromise: Promise<
+      Result<ReadableStream<{ id: number }>, OkfetchError<unknown>>
+    > = okfetch("https://example.com/stream", {
+      fetch: mockFetch,
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+      stream: true as const,
+    });
+
+    expect(objectResultPromise).toBeInstanceOf(Promise);
+    expect(streamResultPromise).toBeInstanceOf(Promise);
   });
 });
 

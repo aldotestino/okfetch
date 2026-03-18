@@ -55,8 +55,6 @@ export type EndpointError<
   ? Infer<TEndpoint["error"]>
   : TGlobalError;
 
-export type ApiErrors<TError = unknown> = OkfetchError<TError>;
-
 export type EndpointSuccess<TEndpoint extends EndpointDefinition> =
   TEndpoint["stream"] extends true
     ? ReadableStream<
@@ -72,7 +70,7 @@ export type EndpointResult<
 > = Promise<
   Result<
     EndpointSuccess<TEndpoint>,
-    ApiErrors<EndpointError<TEndpoint, TGlobalError>>
+    OkfetchError<EndpointError<TEndpoint, TGlobalError>>
   >
 >;
 
