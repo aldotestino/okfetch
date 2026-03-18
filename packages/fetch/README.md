@@ -5,7 +5,7 @@
 It wraps the standard `fetch` API with:
 
 - `Result`-based error handling via `better-result`
-- Zod-powered response validation
+- Standard Schema-compatible response validation
 - request retries and timeouts
 - auth helpers
 - lifecycle plugins
@@ -16,11 +16,11 @@ If you want typed HTTP calls without building a full generated client, this is t
 ## Installation
 
 ```bash
-bun add @okfetch/fetch better-result zod
+bun add @okfetch/fetch better-result
 ```
 
 ```bash
-npm install @okfetch/fetch better-result zod
+npm install @okfetch/fetch better-result
 ```
 
 ## What It Exports
@@ -91,6 +91,8 @@ result.match({
 - `plugins`
 - `retry`
 - `fetch`
+
+Any schema object that implements Standard Schema v1 can be used for `outputSchema` and `apiErrorDataSchema`.
 
 ### URL building
 

@@ -8,6 +8,8 @@ export {
 } from "./errors";
 export type {
   Auth,
+  InferInput,
+  InferOutput,
   OkfetchError,
   OkfetchFetch,
   OkfetchOptions,
@@ -16,6 +18,9 @@ export type {
   OkfetchSuccess,
   Method,
   RetryOptions,
+  StandardSchemaV1,
 } from "./types";
+export type { StandardSchemaIssue } from "./standard-schema";
 export { validateAllErrors, validateClientErrors } from "./presets";
+export { validateSchema } from "./schema";
 export { okfetch } from "./okfetch";

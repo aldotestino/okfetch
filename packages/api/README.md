@@ -11,14 +11,16 @@ It sits on top of `@okfetch/fetch` and adds:
 
 Use this package when you have more than a few repeated API calls and want one source of truth for request and response shapes.
 
+Endpoint schemas are library-agnostic as long as they implement Standard Schema v1.
+
 ## Installation
 
 ```bash
-bun add @okfetch/api @okfetch/fetch better-result zod
+bun add @okfetch/api @okfetch/fetch better-result
 ```
 
 ```bash
-npm install @okfetch/api @okfetch/fetch better-result zod
+npm install @okfetch/api @okfetch/fetch better-result
 ```
 
 ## What It Exports

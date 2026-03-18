@@ -1,5 +1,3 @@
-import type { infer as Infer, ZodType } from "zod/v4";
-
 import type {
   ApiError,
   FetchError,
@@ -8,6 +6,11 @@ import type {
   TimeoutError,
   ValidationError,
 } from "./errors";
+import type {
+  InferInput,
+  InferOutput,
+  StandardSchemaV1,
+} from "./standard-schema";
 import type { Prettify } from "./type-utils";
 
 export type OkfetchError<TErr> =
@@ -108,8 +111,8 @@ export type OkfetchFetch = (
 ) => Promise<Response>;
 
 export type StreamChunkValue<Options extends OkfetchOptions> =
-  Options["outputSchema"] extends ZodType
-    ? Infer<Options["outputSchema"]>
+  Options["outputSchema"] extends StandardSchemaV1
+    ? InferOutput<Options["outputSchema"]>
     : unknown;
 
 export type OkfetchSuccess<
@@ -200,9 +203,9 @@ export type OkfetchOptions = Prettify<
     method?: Method;
     headers?: Record<string, string>;
     auth?: Auth;
-    outputSchema?: ZodType;
-    errorSchema?: ZodType;
-    apiErrorDataSchema?: ZodType;
+    outputSchema?: StandardSchemaV1;
+    errorSchema?: StandardSchemaV1;
+    apiErrorDataSchema?: StandardSchemaV1;
     baseURL?: string;
     params?: Record<string, string | number | boolean>;
     query?: Record<
@@ -222,3 +225,5 @@ export type OkfetchOptions = Prettify<
     _retryAttempt?: number;
   }
 >;
+
+export type { InferInput, InferOutput, StandardSchemaV1 };

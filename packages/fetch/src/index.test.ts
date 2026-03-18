@@ -5,8 +5,13 @@ import type { Result } from "better-result";
 import { z } from "zod/v4";
 
 import { ValidationError } from "./errors";
-import type { OkfetchError, OkfetchFetch, OkfetchPlugin } from "./index";
-import { okfetch } from "./index";
+import type {
+  OkfetchError,
+  OkfetchFetch,
+  OkfetchPlugin,
+  StandardSchemaV1,
+} from "./index";
+import { okfetch, validateSchema } from "./index";
 import { validateAllErrors, validateClientErrors } from "./presets";
 import { buildRequestContext } from "./request-context";
 import {
@@ -69,42 +74,48 @@ const collectStreamChunks = async <T>(
 };
 
 const createValidatorPlugin = (schemas: {
-  body?: z.ZodType;
-  params?: z.ZodType;
-  query?: z.ZodType;
+  body?: StandardSchemaV1;
+  params?: StandardSchemaV1;
+  query?: StandardSchemaV1;
 }): OkfetchPlugin => ({
   name: "validator",
   version: "1.0.0",
-  init: ({ options, url }) => {
+  init: async ({ options, url }) => {
     if (schemas.params) {
-      const parsedParams = schemas.params.safeParse(options.params ?? {});
+      const parsedParams = await validateSchema(
+        schemas.params,
+        options.params ?? {}
+      );
       if (!parsedParams.success) {
         throw new ValidationError({
+          issues: parsedParams.issues,
           type: "params",
           message: "Invalid params",
-          zodError: parsedParams.error,
         });
       }
     }
 
     if (schemas.query) {
-      const parsedQuery = schemas.query.safeParse(options.query ?? {});
+      const parsedQuery = await validateSchema(
+        schemas.query,
+        options.query ?? {}
+      );
       if (!parsedQuery.success) {
         throw new ValidationError({
+          issues: parsedQuery.issues,
           type: "query",
           message: "Invalid query",
-          zodError: parsedQuery.error,
         });
       }
     }
 
     if (schemas.body) {
-      const parsedBody = schemas.body.safeParse(options.body);
+      const parsedBody = await validateSchema(schemas.body, options.body);
       if (!parsedBody.success) {
         throw new ValidationError({
+          issues: parsedBody.issues,
           type: "body",
           message: "Invalid body",
-          zodError: parsedBody.error,
         });
       }
     }
@@ -412,9 +423,9 @@ describe("okfetch v2 plugins", () => {
           hooks: {
             onRequest: () => {
               throw new ValidationError({
+                issues: parsed.error.issues,
                 type: "query",
                 message: "Nope",
-                zodError: parsed.error,
               });
             },
           },
@@ -710,6 +721,51 @@ describe("okfetch v2 plugins", () => {
     expect(objectResultPromise).toBeInstanceOf(Promise);
     expect(streamResultPromise).toBeInstanceOf(Promise);
   });
+
+  test("supports hand-rolled Standard Schema validators", async () => {
+    const standardSchema: StandardSchemaV1 = {
+      "~standard": {
+        validate: (value: unknown) => {
+          if (
+            typeof value === "object" &&
+            value !== null &&
+            "id" in value &&
+            typeof value.id === "number"
+          ) {
+            return { value: { id: value.id } };
+          }
+
+          return {
+            issues: [{ message: "id must be a number", path: ["id"] }],
+          };
+        },
+        vendor: "custom",
+        version: 1,
+      },
+    };
+
+    const success = await okfetch("https://example.com/resource", {
+      fetch: createMockFetch(() => Response.json({ id: 1 })),
+      outputSchema: standardSchema,
+    });
+
+    expect(success.isOk()).toBe(true);
+    if (success.isOk()) {
+      expect(success.value).toEqual({ id: 1 });
+    }
+
+    const failure = await okfetch("https://example.com/resource", {
+      fetch: createMockFetch(() => Response.json({ id: "bad" })),
+      outputSchema: standardSchema,
+    });
+
+    expect(failure.isErr()).toBe(true);
+    if (failure.isErr() && failure.error._tag === "ValidationError") {
+      expect(failure.error.issues).toEqual([
+        { message: "id must be a number", path: ["id"] },
+      ]);
+    }
+  });
 });
 
 describe("request context", () => {
@@ -836,8 +892,8 @@ describe("request context", () => {
 });
 
 describe("response helpers", () => {
-  test("parses and validates success payloads", () => {
-    const parsed = parseResponseData<{ id: number }>('{"id":1}', {
+  test("parses and validates success payloads", async () => {
+    const parsed = await parseResponseData<{ id: number }>('{"id":1}', {
       outputSchema: z.object({
         id: z.number(),
       }),
@@ -849,14 +905,14 @@ describe("response helpers", () => {
     }
   });
 
-  test("returns parse and validation errors for invalid success payloads", () => {
-    const invalidJson = parseResponseData("not-json", {});
+  test("returns parse and validation errors for invalid success payloads", async () => {
+    const invalidJson = await parseResponseData("not-json", {});
     expect(invalidJson.isErr()).toBe(true);
     if (invalidJson.isErr()) {
       expect(invalidJson.error._tag).toBe("ParseError");
     }
 
-    const invalidShape = parseResponseData('{"id":"bad"}', {
+    const invalidShape = await parseResponseData('{"id":"bad"}', {
       outputSchema: z.object({
         id: z.number(),
       }),
@@ -882,7 +938,7 @@ describe("response helpers", () => {
     }
   });
 
-  test("creates typed api errors only when configured", () => {
+  test("creates typed api errors only when configured", async () => {
     expect(
       shouldValidateErrorResponse(
         {
@@ -903,7 +959,7 @@ describe("response helpers", () => {
       )
     ).toBe(false);
 
-    const typed = createApiError<{ code: string }>(
+    const typed = await createApiError<{ code: string }>(
       new Response('{"code":"BAD"}', {
         status: 400,
         statusText: "Bad Request",
@@ -917,7 +973,7 @@ describe("response helpers", () => {
 
     expect(typed.data).toEqual({ code: "BAD" });
 
-    const untyped = createApiError(
+    const untyped = await createApiError(
       new Response("{bad json", {
         status: 400,
         statusText: "Bad Request",
@@ -982,10 +1038,10 @@ describe("retry helpers", () => {
     ).toBe(400);
   });
 
-  test("applies default retry rules, limits, and custom overrides", () => {
+  test("applies default retry rules, limits, and custom overrides", async () => {
     expect(
       shouldRetryError(
-        createApiError(
+        await createApiError(
           new Response("server down", {
             status: 503,
             statusText: "Unavailable",
@@ -999,7 +1055,7 @@ describe("retry helpers", () => {
 
     expect(
       shouldRetryError(
-        createApiError(
+        await createApiError(
           new Response("server down", {
             status: 503,
             statusText: "Unavailable",
@@ -1018,7 +1074,7 @@ describe("retry helpers", () => {
 
     expect(
       shouldRetryError(
-        createApiError(
+        await createApiError(
           new Response("bad request", {
             status: 400,
             statusText: "Bad Request",
@@ -1037,7 +1093,7 @@ describe("retry helpers", () => {
 
     expect(
       shouldRetryError(
-        createApiError(
+        await createApiError(
           new Response("server down", {
             status: 503,
             statusText: "Unavailable",
@@ -1057,7 +1113,7 @@ describe("retry helpers", () => {
 
     expect(
       shouldRetryError(
-        createApiError(
+        await createApiError(
           new Response("bad request", {
             status: 400,
             statusText: "Bad Request",

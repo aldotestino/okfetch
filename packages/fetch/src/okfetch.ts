@@ -1,5 +1,4 @@
 import { Result } from "better-result";
-import type { infer as Infer, ZodType } from "zod/v4";
 
 import { FetchError, ParseError, TimeoutError } from "./errors";
 import {
@@ -19,11 +18,13 @@ import {
 import { computeRetryDelay, shouldRetryError, sleep } from "./retry";
 import { createParsedStream } from "./stream";
 import type {
+  InferOutput,
   OkfetchError,
   OkfetchOptions,
   OkfetchRequestContext,
   OkfetchSuccess,
   RetryableOkfetchError,
+  StandardSchemaV1,
 } from "./types";
 
 type RequestLoopState = {
@@ -186,7 +187,7 @@ const handleApiFailure = async <TErr>(
   response: Response,
   text: string
 ): Promise<ContinueLoop | StopLoop<never, TErr>> => {
-  const apiError = createApiError<TErr>(response, text, options);
+  const apiError = await createApiError<TErr>(response, text, options);
   if (shouldRetry(apiError, options, state.attempt)) {
     return retryRequest(
       plugins,
@@ -235,7 +236,7 @@ const handleSuccessfulResponse = async <
     return Result.ok(stream as OkfetchSuccess<Options, TRes>);
   }
 
-  const dataResult = parseResponseData<OkfetchSuccess<Options, TRes>>(
+  const dataResult = await parseResponseData<OkfetchSuccess<Options, TRes>>(
     text,
     options
   );
@@ -319,8 +320,8 @@ const executeAttempt = async <TRes, TErr, Options extends OkfetchOptions>(
 };
 
 export function okfetch<
-  TOutputSchema extends ZodType | undefined = undefined,
-  TApiErrorSchema extends ZodType | undefined = undefined,
+  TOutputSchema extends StandardSchemaV1 | undefined = undefined,
+  TApiErrorSchema extends StandardSchemaV1 | undefined = undefined,
 >(
   url: string,
   options?: OkfetchOptions & {
@@ -330,15 +331,19 @@ export function okfetch<
   }
 ): Promise<
   Result<
-    TOutputSchema extends ZodType ? Infer<TOutputSchema> : unknown,
+    TOutputSchema extends StandardSchemaV1
+      ? InferOutput<TOutputSchema>
+      : unknown,
     OkfetchError<
-      TApiErrorSchema extends ZodType ? Infer<TApiErrorSchema> : unknown
+      TApiErrorSchema extends StandardSchemaV1
+        ? InferOutput<TApiErrorSchema>
+        : unknown
     >
   >
 >;
 export function okfetch<
-  TOutputSchema extends ZodType | undefined = undefined,
-  TApiErrorSchema extends ZodType | undefined = undefined,
+  TOutputSchema extends StandardSchemaV1 | undefined = undefined,
+  TApiErrorSchema extends StandardSchemaV1 | undefined = undefined,
 >(
   url: string,
   options: OkfetchOptions & {
@@ -349,10 +354,14 @@ export function okfetch<
 ): Promise<
   Result<
     ReadableStream<
-      TOutputSchema extends ZodType ? Infer<TOutputSchema> : unknown
+      TOutputSchema extends StandardSchemaV1
+        ? InferOutput<TOutputSchema>
+        : unknown
     >,
     OkfetchError<
-      TApiErrorSchema extends ZodType ? Infer<TApiErrorSchema> : unknown
+      TApiErrorSchema extends StandardSchemaV1
+        ? InferOutput<TApiErrorSchema>
+        : unknown
     >
   >
 >;

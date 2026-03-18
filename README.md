@@ -28,7 +28,7 @@ Package-level docs:
 
 ## Why okfetch
 
-- Validate response payloads with Zod before they reach business logic
+- Validate response payloads with any Standard Schema-compatible library before they reach business logic
 - Validate endpoint `body`, `params`, and `query` before a request is sent
 - Handle transport and API failures with typed `Result` values
 - Reuse cross-cutting concerns through plugins instead of ad hoc wrappers
@@ -39,21 +39,21 @@ Package-level docs:
 ### Direct fetch usage
 
 ```bash
-bun add @okfetch/fetch better-result zod
+bun add @okfetch/fetch better-result
 ```
 
 ```bash
-npm install @okfetch/fetch better-result zod
+npm install @okfetch/fetch better-result
 ```
 
 ### Typed API client usage
 
 ```bash
-bun add @okfetch/api @okfetch/fetch better-result zod
+bun add @okfetch/api @okfetch/fetch better-result
 ```
 
 ```bash
-npm install @okfetch/api @okfetch/fetch better-result zod
+npm install @okfetch/api @okfetch/fetch better-result
 ```
 
 ### Logging plugin
@@ -172,6 +172,8 @@ That means callers can use `.isOk()`, `.isErr()`, `.map()`, `.match()`, and othe
 - `body`
 - `params`
 - `query`
+
+Schemas are library-agnostic as long as they implement Standard Schema v1, so `zod`, `valibot`, `arktype`, and similar libraries can be passed directly.
 
 Helpers from `@okfetch/fetch`:
 

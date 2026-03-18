@@ -5,9 +5,9 @@
   "keywords": [
     "fetch",
     "http",
+    "standard-schema",
     "typescript",
-    "validation",
-    "zod"
+    "validation"
   ],
   "homepage": "https://github.com/aldotestino/okfetch#readme",
   "bugs": {
@@ -44,7 +44,6 @@
   },
   "peerDependencies": {
     "better-result": "^2.7.0",
-    "typescript": "^5",
-    "zod": "^4.3.6"
+    "typescript": "^5"
   }
 }
