@@ -16,6 +16,7 @@
     "fix": "ultracite fix",
     "prepare": "husky",
     "release": "bun run build && changeset publish --access public",
+    "typecheck": "bunx tsc --noEmit && cd apps/docs && bun run types:check",
     "version-packages": "changeset version && bun install"
   },
   "devDependencies": {

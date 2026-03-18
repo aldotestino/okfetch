@@ -1,5 +1,5 @@
 {
-  "exclude": ["**/dist/**", "node_modules"],
+  "exclude": ["**/dist/**", "apps/docs/**", "node_modules"],
   "compilerOptions": {
     // Environment setup & latest features
     "lib": ["ESNext"],
@@ -13,8 +13,6 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./apps/docs/src/*"],
-      "collections/*": ["./apps/docs/.source/*"],
       "@okfetch/api": ["./packages/api/src/index.ts"],
       "@okfetch/fetch": ["./packages/fetch/src/index.ts"],
       "@okfetch/logger": ["./packages/logger/index.ts"]
