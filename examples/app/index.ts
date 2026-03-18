@@ -78,5 +78,4 @@ if (invalidTodo.isErr() && invalidTodo.error._tag === "ValidationError") {
   for (const issue of invalidTodo.error.zodError.issues) {
     console.log(`  ${issue.path.join(".") || "body"}: ${issue.message}`);
   }
-  console.log();
 }
