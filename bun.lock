@@ -35,9 +35,9 @@
     },
     "packages/api": {
       "name": "@okfetch/api",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
-        "@okfetch/fetch": "^0.2.0",
+        "@okfetch/fetch": "^0.3.0",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -45,15 +45,14 @@
         "zod": "^4.3.6",
       },
       "peerDependencies": {
-        "@okfetch/fetch": "^0.2.0",
+        "@okfetch/fetch": "^0.3.0",
         "better-result": "^2.7.0",
         "typescript": "^5",
-        "zod": "^4.3.6",
       },
     },
     "packages/fetch": {
       "name": "@okfetch/fetch",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "devDependencies": {
         "@types/bun": "latest",
         "better-result": "^2.7.0",
@@ -62,21 +61,20 @@
       "peerDependencies": {
         "better-result": "^2.7.0",
         "typescript": "^5",
-        "zod": "^4.3.6",
       },
     },
     "packages/logger": {
       "name": "@okfetch/logger",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
         "pino": "^10.3.1",
       },
       "devDependencies": {
-        "@okfetch/fetch": "^0.2.0",
+        "@okfetch/fetch": "^0.3.0",
         "@types/bun": "latest",
       },
       "peerDependencies": {
-        "@okfetch/fetch": "^0.2.0",
+        "@okfetch/fetch": "^0.3.0",
         "pino": "^10.3.1",
         "typescript": "^5",
       },
