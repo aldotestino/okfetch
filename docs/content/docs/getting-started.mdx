@@ -1,0 +1,133 @@
+---
+title: Getting Started
+description: Install okfetch and make your first validated request.
+---
+
+Start by making one request with `@okfetch/fetch`. If your API surface grows, move the repeated request shapes into `@okfetch/api`. If you want logs, add `@okfetch/logger` on top of `@okfetch/fetch`.
+
+## Install
+
+### Direct requests with `@okfetch/fetch`
+
+<Tabs items={["npm", "pnpm", "yarn", "bun"]}>
+  <Tab value="npm">
+
+  ```bash
+  npm install @okfetch/fetch better-result zod
+  ```
+
+  </Tab>
+  <Tab value="pnpm">
+
+  ```bash
+  pnpm add @okfetch/fetch better-result zod
+  ```
+
+  </Tab>
+  <Tab value="yarn">
+
+  ```bash
+  yarn add @okfetch/fetch better-result zod
+  ```
+
+  </Tab>
+  <Tab value="bun">
+
+  ```bash
+  bun add @okfetch/fetch better-result zod
+  ```
+
+  </Tab>
+</Tabs>
+
+### Typed clients with `@okfetch/api`
+
+<Tabs items={["npm", "pnpm", "yarn", "bun"]}>
+  <Tab value="npm">
+
+  ```bash
+  npm install @okfetch/api @okfetch/fetch better-result zod
+  ```
+
+  </Tab>
+  <Tab value="pnpm">
+
+  ```bash
+  pnpm add @okfetch/api @okfetch/fetch better-result zod
+  ```
+
+  </Tab>
+  <Tab value="yarn">
+
+  ```bash
+  yarn add @okfetch/api @okfetch/fetch better-result zod
+  ```
+
+  </Tab>
+  <Tab value="bun">
+
+  ```bash
+  bun add @okfetch/api @okfetch/fetch better-result zod
+  ```
+
+  </Tab>
+</Tabs>
+
+### Logging with `@okfetch/logger`
+
+<Tabs items={["npm", "pnpm", "yarn", "bun"]}>
+  <Tab value="npm">
+
+  ```bash
+  npm install @okfetch/logger @okfetch/fetch pino
+  ```
+
+  </Tab>
+  <Tab value="pnpm">
+
+  ```bash
+  pnpm add @okfetch/logger @okfetch/fetch pino
+  ```
+
+  </Tab>
+  <Tab value="yarn">
+
+  ```bash
+  yarn add @okfetch/logger @okfetch/fetch pino
+  ```
+
+  </Tab>
+  <Tab value="bun">
+
+  ```bash
+  bun add @okfetch/logger @okfetch/fetch pino
+  ```
+
+  </Tab>
+</Tabs>
+
+## First request
+
+This is the baseline pattern used across the docs: call `okfetch`, validate the result, then branch explicitly on success and failure.
+
+```ts twoslash
+import { okfetch } from "@okfetch/fetch";
+import { z } from "zod/v4";
+
+const userSchema = z.object({
+  email: z.string().email(),
+  id: z.number(),
+  name: z.string(),
+});
+
+const result = await okfetch("/users/:id", {
+  baseURL: "https://api.example.com",
+  params: { id: 1 },
+  outputSchema: userSchema,
+});
+
+result.match({
+  err: (error) => console.error(error._tag, error.message),
+  ok: (user) => console.log(user.name),
+});
+```

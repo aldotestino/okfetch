@@ -1,0 +1,99 @@
+---
+title: Advanced
+description: Add retries, plugins, and streaming to direct requests.
+---
+
+## Exponential retry
+
+```ts twoslash
+import { okfetch } from "@okfetch/fetch";
+
+const result = await okfetch("https://api.example.com/me", {
+  retry: {
+    attempts: 3,
+    initialDelay: 100,
+    strategy: "exponential",
+  },
+});
+```
+
+## Fixed retry
+
+```ts twoslash
+import { okfetch } from "@okfetch/fetch";
+
+const result = await okfetch("https://api.example.com/me", {
+  retry: {
+    attempts: 2,
+    delay: 250,
+    strategy: "fixed",
+  },
+});
+```
+
+## Linear retry
+
+```ts twoslash
+import { okfetch } from "@okfetch/fetch";
+
+const result = await okfetch("https://api.example.com/me", {
+  retry: {
+    attempts: 3,
+    initialDelay: 100,
+    step: 100,
+    strategy: "linear",
+  },
+});
+```
+
+## Plugin that adds a header
+
+Plugins are the place for cross-cutting transport behavior you want to reuse.
+
+```ts twoslash
+import type { OkfetchPlugin } from "@okfetch/fetch";
+
+const requestIdPlugin: OkfetchPlugin = {
+  name: "request-id",
+  version: "1.0.0",
+  hooks: {
+    onRequest(context) {
+      context.headers.set("x-request-id", crypto.randomUUID());
+      return context;
+    },
+  },
+};
+```
+
+## Plugin that logs failures
+
+```ts twoslash
+import type { OkfetchPlugin } from "@okfetch/fetch";
+
+const errorPlugin: OkfetchPlugin = {
+  name: "errors",
+  version: "1.0.0",
+  hooks: {
+    onFail(_context, _response, error) {
+      console.error(error._tag, error.message);
+    },
+  },
+};
+```
+
+## Stream typed SSE chunks
+
+When `stream: true` and `outputSchema` are both set, each `data:` chunk is validated before it is emitted.
+
+```ts twoslash
+import { okfetch } from "@okfetch/fetch";
+import { z } from "zod/v4";
+
+const result = await okfetch("https://example.com/events", {
+  outputSchema: z.object({
+    id: z.number(),
+    message: z.string(),
+  }),
+  stream: true,
+});
+```

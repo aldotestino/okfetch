@@ -15,5 +15,6 @@
     "import/no-cycle": "off",
     "no-inline-comments": "off",
     "consistent-type-definitions": ["error", "type"]
-  }
+  },
+  "ignorePatterns": ["docs/**/*"]
 }

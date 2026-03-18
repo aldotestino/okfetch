@@ -1,0 +1,63 @@
+---
+title: Overview
+description: Use @okfetch/fetch for direct requests with validation and transport features.
+---
+
+## Install
+
+<Tabs items={["npm", "pnpm", "yarn", "bun"]}>
+  <Tab value="npm">
+
+  ```bash
+  npm install @okfetch/fetch better-result zod
+  ```
+
+  </Tab>
+  <Tab value="pnpm">
+
+  ```bash
+  pnpm add @okfetch/fetch better-result zod
+  ```
+
+  </Tab>
+  <Tab value="yarn">
+
+  ```bash
+  yarn add @okfetch/fetch better-result zod
+  ```
+
+  </Tab>
+  <Tab value="bun">
+
+  ```bash
+  bun add @okfetch/fetch better-result zod
+  ```
+
+  </Tab>
+</Tabs>
+
+## Typical request
+
+Use this as the default shape for a normal typed request.
+
+```ts twoslash
+import { okfetch } from "@okfetch/fetch";
+import { z } from "zod/v4";
+
+const userSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+});
+
+const result = await okfetch("/users/:id", {
+  baseURL: "https://api.example.com",
+  params: { id: 42 },
+  query: { include: ["teams"] },
+  outputSchema: userSchema,
+});
+
+result.match({
+  err: (error) => console.error(error._tag, error.message),
+  ok: (user) => console.log(user.name),
+});
+```

@@ -5,7 +5,7 @@
   "changelog": false,
   "commit": false,
   "fixed": [],
-  "ignore": ["@okfetch/app"],
+  "ignore": ["@okfetch/app", "@okfetch/docs"],
   "linked": [],
   "updateInternalDependencies": "patch"
 }

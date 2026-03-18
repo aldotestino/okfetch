@@ -1,0 +1,191 @@
+---
+title: Client Behavior
+description: Apply defaults, override requests, validate input, and use streaming endpoints with @okfetch/api.
+---
+
+## Global defaults in `createApi`
+
+```ts twoslash
+import { createApi, createEndpoints } from "@okfetch/api";
+import { z } from "zod/v4";
+
+const endpoints = createEndpoints({
+  users: {
+    get: {
+      method: "GET",
+      path: "/users/:id",
+      params: z.object({ id: z.number() }),
+    },
+  },
+});
+
+const api = createApi({
+  baseURL: "https://api.example.com",
+  endpoints,
+  headers: { "x-client": "web-app" },
+  timeout: 5_000,
+});
+```
+
+## Endpoint-level request defaults
+
+```ts twoslash
+import { createEndpoints } from "@okfetch/api";
+import { z } from "zod/v4";
+
+const endpoints = createEndpoints({
+  users: {
+    get: {
+      method: "GET",
+      path: "/users/:id",
+      params: z.object({ id: z.number() }),
+      requestOptions: {
+        headers: { "x-scope": "endpoint" },
+        retry: { attempts: 1, strategy: "fixed" },
+      },
+    },
+  },
+});
+```
+
+## Per-call overrides win
+
+```ts twoslash
+import { createApi, createEndpoints } from "@okfetch/api";
+import { z } from "zod/v4";
+
+const endpoints = createEndpoints({
+  users: {
+    get: {
+      method: "GET",
+      path: "/users/:id",
+      params: z.object({ id: z.number() }),
+    },
+  },
+});
+
+const api = createApi({
+  baseURL: "https://api.example.com",
+  endpoints,
+});
+
+const result = await api.users.get(
+  { params: { id: 1 } },
+  {
+    headers: { "x-request-id": crypto.randomUUID() },
+    timeout: 1_000,
+  }
+);
+```
+
+Order:
+
+1. global `createApi` options
+2. endpoint `requestOptions`
+3. per-call request overrides
+
+## Skip request validation
+
+```ts twoslash
+import { createApi, createEndpoints } from "@okfetch/api";
+import { z } from "zod/v4";
+
+const endpoints = createEndpoints({
+  users: {
+    get: {
+      method: "GET",
+      path: "/users/:id",
+      params: z.object({ id: z.number() }),
+    },
+  },
+});
+
+const api = createApi({
+  baseURL: "https://api.example.com",
+  endpoints,
+  validateInput: false,
+});
+```
+
+## Global error schema with endpoint override
+
+```ts twoslash
+import { createApi, createEndpoints } from "@okfetch/api";
+import { z } from "zod/v4";
+
+const endpoints = createEndpoints({
+  me: {
+    method: "GET",
+    path: "/me",
+  },
+});
+
+const api = createApi({
+  baseURL: "https://api.example.com",
+  endpoints,
+  errorSchema: z.object({
+    message: z.string(),
+  }),
+});
+```
+
+```ts twoslash
+import { createEndpoints } from "@okfetch/api";
+import { z } from "zod/v4";
+
+const endpoints = createEndpoints({
+  me: {
+    method: "GET",
+    path: "/me",
+    error: z.object({
+      code: z.string(),
+    }),
+  },
+});
+```
+
+## Streaming endpoint
+
+```ts twoslash
+import { createEndpoints } from "@okfetch/api";
+import { z } from "zod/v4";
+
+const endpoints = createEndpoints({
+  events: {
+    method: "GET",
+    path: "/events",
+    stream: true,
+    output: z.object({
+      id: z.number(),
+      message: z.string(),
+    }),
+  },
+});
+```
+
+## `ApiService`
+
+```ts twoslash
+import { ApiService, createEndpoints } from "@okfetch/api";
+import { z } from "zod/v4";
+
+const endpoints = createEndpoints({
+  posts: {
+    getById: {
+      method: "GET",
+      path: "/posts/:id",
+      params: z.object({ id: z.number() }),
+      output: z.object({
+        id: z.number(),
+        title: z.string(),
+      }),
+    },
+  },
+});
+
+class BlogService extends ApiService(endpoints) {
+  constructor() {
+    super({ baseURL: "https://api.example.com" });
+  }
+}
+```

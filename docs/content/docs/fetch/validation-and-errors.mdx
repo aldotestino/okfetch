@@ -1,0 +1,83 @@
+---
+title: Validation and Errors
+description: Validate response data, validate API errors, and branch on tagged failures.
+---
+
+## Validate a successful response
+
+Validate the success payload before it reaches the rest of your app.
+
+```ts twoslash
+import { okfetch } from "@okfetch/fetch";
+import { z } from "zod/v4";
+
+const meSchema = z.object({
+  email: z.string().email(),
+  id: z.string(),
+});
+
+const result = await okfetch("https://api.example.com/me", {
+  outputSchema: meSchema,
+});
+```
+
+## Validate only client error bodies
+
+Use `validateClientErrors` when the API returns structured `4xx` errors but not necessarily structured `5xx` errors.
+
+```ts twoslash
+import { okfetch, validateClientErrors } from "@okfetch/fetch";
+import { z } from "zod/v4";
+
+const result = await okfetch("https://api.example.com/me", {
+  apiErrorDataSchema: z.object({
+    code: z.string(),
+    message: z.string(),
+  }),
+  shouldValidateError: validateClientErrors,
+});
+```
+
+## Validate all error bodies
+
+Use `validateAllErrors` when both client and server error responses share the same shape.
+
+```ts twoslash
+import { okfetch, validateAllErrors } from "@okfetch/fetch";
+import { z } from "zod/v4";
+
+const result = await okfetch("https://api.example.com/me", {
+  apiErrorDataSchema: z.object({
+    code: z.string(),
+    message: z.string(),
+  }),
+  shouldValidateError: validateAllErrors,
+});
+```
+
+## Branch on tagged errors
+
+```ts twoslash
+import { okfetch } from "@okfetch/fetch";
+import { z } from "zod/v4";
+
+const result = await okfetch("https://api.example.com/me", {
+    apiErrorDataSchema: z.object({
+    code: z.string(),
+    message: z.string(),
+  }),
+});
+
+if (result.isErr()) {
+  switch (result.error._tag) {
+    case "ApiError":
+      console.error(result.error.statusCode, result.error.data);
+      break;
+    case "ValidationError":
+      console.error(result.error.type);
+      break;
+    default:
+      console.error(result.error.message);
+  }
+}
+```

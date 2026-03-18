@@ -1,0 +1,13 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "getting-started",
+    "choose-the-right-package",
+    "core-concepts",
+    "---Packages---",
+    "fetch",
+    "api",
+    "logger"
+  ]
+}
