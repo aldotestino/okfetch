@@ -320,7 +320,7 @@ const executeAttempt = async <TRes, TErr, Options extends OkfetchOptions>(
 
 export function okfetch<Options extends OkfetchOptions = OkfetchOptions>(
   url: string,
-  options: Options
+  options?: Options
 ): Promise<
   Result<
     OkfetchSuccess<
@@ -338,15 +338,15 @@ export function okfetch<Options extends OkfetchOptions = OkfetchOptions>(
 >;
 export function okfetch<TRes = unknown>(
   url: string,
-  options: OkfetchOptions & { stream: true }
+  options?: OkfetchOptions & { stream: true }
 ): Promise<Result<ReadableStream<TRes>, OkfetchError<unknown>>>;
 export function okfetch<TRes = unknown, TErr = unknown>(
   url: string,
-  options: OkfetchOptions & { stream: true }
+  options?: OkfetchOptions & { stream: true }
 ): Promise<Result<ReadableStream<TRes>, OkfetchError<TErr>>>;
 export function okfetch<TRes = unknown, TErr = unknown>(
   url: string,
-  options: OkfetchOptions
+  options?: OkfetchOptions
 ): Promise<Result<TRes, OkfetchError<TErr>>>;
 export async function okfetch<
   TRes = unknown,
@@ -354,11 +354,12 @@ export async function okfetch<
   Options extends OkfetchOptions = OkfetchOptions,
 >(
   url: string,
-  options: Options
+  options?: Options
 ): Promise<Result<OkfetchSuccess<Options, TRes>, OkfetchError<TErr>>> {
-  const plugins = options.plugins ?? [];
+  const resolvedInputOptions = (options ?? {}) as Options;
+  const plugins = resolvedInputOptions.plugins ?? [];
   const initResult = await runPluginInit(plugins, {
-    options: options as OkfetchOptions,
+    options: resolvedInputOptions as OkfetchOptions,
     url,
   });
   if (initResult.isErr()) {
