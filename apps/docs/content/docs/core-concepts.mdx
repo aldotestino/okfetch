@@ -1,0 +1,42 @@
+---
+title: Core Concepts
+description: The small set of ideas shared across okfetch.
+---
+
+## Every call returns a `Result`
+
+```ts twoslash
+import { okfetch } from "@okfetch/fetch";
+
+const result = await okfetch("https://api.example.com/me");
+
+if (result.isErr()) {
+  console.error(result.error._tag, result.error.message);
+}
+```
+
+That keeps expected request failures out of `try/catch` and makes the success path explicit.
+
+## Validation happens at boundaries
+
+- `outputSchema` validates successful responses
+- `apiErrorDataSchema` or `errorSchema` validates structured error bodies
+- `@okfetch/api` validates `body`, `params`, and `query` before sending
+- `stream: true` validates each SSE chunk when an `outputSchema` is present
+
+## Errors are tagged
+
+```ts twoslash
+import { okfetch } from "@okfetch/fetch";
+
+const result = await okfetch("https://api.example.com/me");
+
+if (result.isErr() && result.error._tag === "ApiError") {
+  console.error(result.error.statusCode, result.error.data);
+}
+```
+
+## Plugins and retries are transport features
+
+- retries support `fixed`, `linear`, and `exponential`
+- plugins run through `init`, `onRequest`, `onResponse`, `onSuccess`, `onFail`, and `onRetry`

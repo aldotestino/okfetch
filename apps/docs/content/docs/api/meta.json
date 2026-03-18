@@ -1,0 +1,4 @@
+{
+  "title": "@okfetch/api",
+  "pages": ["overview", "defining-endpoints", "client-behavior"]
+}

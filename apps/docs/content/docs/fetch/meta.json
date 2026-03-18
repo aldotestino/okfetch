@@ -1,0 +1,4 @@
+{
+  "title": "@okfetch/fetch",
+  "pages": ["overview", "making-requests", "validation-and-errors", "advanced"]
+}

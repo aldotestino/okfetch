@@ -16,5 +16,5 @@
     "no-inline-comments": "off",
     "consistent-type-definitions": ["error", "type"]
   },
-  "ignorePatterns": ["docs/**/*"]
+  "ignorePatterns": ["apps/docs/**/*"]
 }

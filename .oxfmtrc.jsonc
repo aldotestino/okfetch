@@ -20,5 +20,5 @@
     "newlinesBetween": true,
     "order": "asc",
   },
-  "ignorePatterns": ["docs/**/*"],
+  "ignorePatterns": ["apps/docs/**/*"],
 }

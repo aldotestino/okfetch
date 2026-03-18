@@ -1,0 +1,64 @@
+---
+title: Overview
+description: Use @okfetch/api to turn endpoint definitions into a typed client.
+---
+
+## Install
+
+<Tabs items={["npm", "pnpm", "yarn", "bun"]}>
+  <Tab value="npm">
+
+```bash
+npm install @okfetch/api @okfetch/fetch better-result zod
+```
+
+  </Tab>
+  <Tab value="pnpm">
+
+```bash
+pnpm add @okfetch/api @okfetch/fetch better-result zod
+```
+
+  </Tab>
+  <Tab value="yarn">
+
+```bash
+yarn add @okfetch/api @okfetch/fetch better-result zod
+```
+
+  </Tab>
+  <Tab value="bun">
+
+```bash
+bun add @okfetch/api @okfetch/fetch better-result zod
+```
+
+  </Tab>
+</Tabs>
+
+## Define and call one endpoint
+
+This is the smallest useful `@okfetch/api` setup: define an endpoint tree, create a client, then call one method.
+
+```ts twoslash
+import { createApi, createEndpoints } from "@okfetch/api";
+import { z } from "zod/v4";
+
+const endpoints = createEndpoints({
+  users: {
+    get: {
+      method: "GET",
+      output: z.object({ id: z.number(), name: z.string() }),
+      params: z.object({ id: z.number() }),
+      path: "/users/:id",
+    },
+  },
+});
+
+const api = createApi({
+  baseURL: "https://api.example.com",
+  endpoints,
+});
+
+const result = await api.users.get({ params: { id: 1 } });
+```
