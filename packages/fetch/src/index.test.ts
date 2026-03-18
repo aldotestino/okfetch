@@ -684,6 +684,32 @@ describe("okfetch v2 plugins", () => {
 
     expect(resultPromise).toBeInstanceOf(Promise);
   });
+
+  test("infers schema-based result types for stream and non-stream options", () => {
+    const mockFetch = createMockFetch(() => Response.json({ id: 1 }));
+
+    const objectResultPromise: Promise<
+      Result<{ id: number }, OkfetchError<unknown>>
+    > = okfetch("https://example.com/object", {
+      fetch: mockFetch,
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+    });
+
+    const streamResultPromise: Promise<
+      Result<ReadableStream<{ id: number }>, OkfetchError<unknown>>
+    > = okfetch("https://example.com/stream", {
+      fetch: mockFetch,
+      outputSchema: z.object({
+        id: z.number(),
+      }),
+      stream: true as const,
+    });
+
+    expect(objectResultPromise).toBeInstanceOf(Promise);
+    expect(streamResultPromise).toBeInstanceOf(Promise);
+  });
 });
 
 describe("request context", () => {

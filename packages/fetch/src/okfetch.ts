@@ -318,21 +318,41 @@ const executeAttempt = async <TRes, TErr, Options extends OkfetchOptions>(
   };
 };
 
-export function okfetch<Options extends OkfetchOptions = OkfetchOptions>(
+export function okfetch<
+  TOutputSchema extends ZodType | undefined = undefined,
+  TApiErrorSchema extends ZodType | undefined = undefined,
+>(
   url: string,
-  options?: Options
+  options?: OkfetchOptions & {
+    apiErrorDataSchema?: TApiErrorSchema;
+    outputSchema?: TOutputSchema;
+    stream?: false;
+  }
 ): Promise<
   Result<
-    OkfetchSuccess<
-      Options,
-      Options["outputSchema"] extends ZodType
-        ? Infer<Options["outputSchema"]>
-        : unknown
+    TOutputSchema extends ZodType ? Infer<TOutputSchema> : unknown,
+    OkfetchError<
+      TApiErrorSchema extends ZodType ? Infer<TApiErrorSchema> : unknown
+    >
+  >
+>;
+export function okfetch<
+  TOutputSchema extends ZodType | undefined = undefined,
+  TApiErrorSchema extends ZodType | undefined = undefined,
+>(
+  url: string,
+  options: OkfetchOptions & {
+    apiErrorDataSchema?: TApiErrorSchema;
+    outputSchema?: TOutputSchema;
+    stream: true;
+  }
+): Promise<
+  Result<
+    ReadableStream<
+      TOutputSchema extends ZodType ? Infer<TOutputSchema> : unknown
     >,
     OkfetchError<
-      Options["apiErrorDataSchema"] extends ZodType
-        ? Infer<Options["apiErrorDataSchema"]>
-        : unknown
+      TApiErrorSchema extends ZodType ? Infer<TApiErrorSchema> : unknown
     >
   >
 >;
@@ -348,18 +368,14 @@ export function okfetch<TRes = unknown, TErr = unknown>(
   url: string,
   options?: OkfetchOptions
 ): Promise<Result<TRes, OkfetchError<TErr>>>;
-export async function okfetch<
-  TRes = unknown,
-  TErr = unknown,
-  Options extends OkfetchOptions = OkfetchOptions,
->(
+export async function okfetch<TRes = unknown, TErr = unknown>(
   url: string,
-  options?: Options
-): Promise<Result<OkfetchSuccess<Options, TRes>, OkfetchError<TErr>>> {
-  const resolvedInputOptions = (options ?? {}) as Options;
+  options?: OkfetchOptions
+): Promise<Result<TRes, OkfetchError<TErr>>> {
+  const resolvedInputOptions = options ?? {};
   const plugins = resolvedInputOptions.plugins ?? [];
   const initResult = await runPluginInit(plugins, {
-    options: resolvedInputOptions as OkfetchOptions,
+    options: resolvedInputOptions,
     url,
   });
   if (initResult.isErr()) {
@@ -377,10 +393,10 @@ export async function okfetch<
   };
 
   while (true) {
-    const outcome = await executeAttempt<TRes, TErr, Options>(
+    const outcome = await executeAttempt<TRes, TErr, OkfetchOptions>(
       plugins,
       state,
-      resolvedOptions as Options
+      resolvedOptions
     );
     if (outcome.shouldContinue) {
       state.attempt = outcome.attempt;
