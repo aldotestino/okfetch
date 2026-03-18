@@ -338,11 +338,11 @@ export function okfetch<Options extends OkfetchOptions = OkfetchOptions>(
 >;
 export function okfetch<TRes = unknown>(
   url: string,
-  options?: OkfetchOptions & { stream: true }
+  options: OkfetchOptions & { stream: true }
 ): Promise<Result<ReadableStream<TRes>, OkfetchError<unknown>>>;
 export function okfetch<TRes = unknown, TErr = unknown>(
   url: string,
-  options?: OkfetchOptions & { stream: true }
+  options: OkfetchOptions & { stream: true }
 ): Promise<Result<ReadableStream<TRes>, OkfetchError<TErr>>>;
 export function okfetch<TRes = unknown, TErr = unknown>(
   url: string,
