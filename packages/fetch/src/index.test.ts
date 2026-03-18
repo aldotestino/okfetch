@@ -114,6 +114,31 @@ const createValidatorPlugin = (schemas: {
 });
 
 describe("okfetch v2 plugins", () => {
+  test("supports calling okfetch with only a url", async () => {
+    const originalFetch = globalThis.fetch;
+    let method = "";
+    let requestUrl = "";
+
+    globalThis.fetch = createMockFetch((request) => {
+      ({ method } = request);
+      requestUrl = request.url;
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+
+    try {
+      const result = await okfetch("https://example.com/todos");
+
+      expect(result.isOk()).toBe(true);
+      expect(method).toBe("GET");
+      expect(requestUrl).toBe("https://example.com/todos");
+      if (result.isOk()) {
+        expect(result.value).toEqual({ ok: true });
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("executes init hooks in order and rewrites raw url and options", async () => {
     let finalInput: OkfetchPluginInitInput | undefined;
     let requestUrl = "";
