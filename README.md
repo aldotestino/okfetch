@@ -4,6 +4,8 @@
 
 `okfetch` is a small family of TypeScript-first HTTP packages built around one idea: make `fetch` safer and more composable without hiding how the web platform works.
 
+> Heavily inspired by [better-fetch](https://github.com/better-auth/better-fetch) 🙌🏻
+
 The repo is split into focused packages:
 
 - `@okfetch/fetch` for direct typed requests with validation, retries, plugins, timeouts, auth, and streaming
@@ -22,9 +24,9 @@ All request execution is based on [`better-result`](https://github.com/dmmulroy/
 
 Package-level docs:
 
-- [packages/fetch/README.md](/Users/aldotestino/Developer/okfetch/packages/fetch/README.md)
-- [packages/api/README.md](/Users/aldotestino/Developer/okfetch/packages/api/README.md)
-- [packages/logger/README.md](/Users/aldotestino/Developer/okfetch/packages/logger/README.md)
+- [packages/fetch/README.md](https://github.com/aldotestino/okfetch/blob/main/packages/fetch/README.md)
+- [packages/api/README.md](https://github.com/aldotestino/okfetch/blob/main/packages/api/README.md)
+- [packages/logger/README.md](https://github.com/aldotestino/okfetch/blob/main/packages/logger/README.md)
 
 ## Why okfetch
 
@@ -258,7 +260,7 @@ Each SSE `data:` chunk is parsed independently. If you pass an `outputSchema`, e
 
 ## Example App
 
-A small runnable example lives in [examples/app/index.ts](/Users/aldotestino/Developer/okfetch/examples/app/index.ts).
+A small runnable example lives in [examples/app/index.ts](https://github.com/aldotestino/okfetch/blob/main/examples/app/index.ts).
 
 Run it with:
 
