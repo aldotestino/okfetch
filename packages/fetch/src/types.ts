@@ -1,4 +1,9 @@
 import type {
+  StandardSchemaV1,
+  StandardSchemaV1 as _StandardSchemaV1,
+} from "@standard-schema/spec";
+
+import type {
   ApiError,
   FetchError,
   ParseError,
@@ -6,11 +11,6 @@ import type {
   TimeoutError,
   ValidationError,
 } from "./errors";
-import type {
-  InferInput,
-  InferOutput,
-  StandardSchemaV1,
-} from "./standard-schema";
 import type { Prettify } from "./type-utils";
 
 export type OkfetchError<TErr> =
@@ -226,4 +226,10 @@ export type OkfetchOptions = Prettify<
   }
 >;
 
-export type { InferInput, InferOutput, StandardSchemaV1 };
+export type InferInput<TSchema extends _StandardSchemaV1> =
+  _StandardSchemaV1.InferInput<TSchema>;
+
+export type InferOutput<TSchema extends _StandardSchemaV1> =
+  _StandardSchemaV1.InferOutput<TSchema>;
+
+export type { StandardSchemaV1 };

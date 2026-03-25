@@ -1,3 +1,5 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 export {
   ApiError,
   FetchError,
@@ -18,9 +20,9 @@ export type {
   OkfetchSuccess,
   Method,
   RetryOptions,
-  StandardSchemaV1,
 } from "./types";
-export type { StandardSchemaIssue } from "./standard-schema";
+export type { StandardSchemaV1 } from "@standard-schema/spec";
+export type StandardSchemaIssue = StandardSchemaV1.Issue;
 export { validateAllErrors, validateClientErrors } from "./presets";
 export { validateSchema } from "./schema";
 export { okfetch } from "./okfetch";
