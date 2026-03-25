@@ -48,6 +48,9 @@ const api = createApi({
     "x-demo": "okfetch-example",
   },
   plugins: [logger()],
+  errorSchema: z.object({
+    message: z.string(),
+  }),
 });
 
 console.log("1. Direct request with schema validation\n");
