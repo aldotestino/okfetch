@@ -1,4 +1,4 @@
-import type { StandardSchemaIssue, StandardSchemaV1 } from "./standard-schema";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 type SchemaValidationSuccess<TValue> = {
   data: TValue;
@@ -6,7 +6,7 @@ type SchemaValidationSuccess<TValue> = {
 };
 
 type SchemaValidationFailure = {
-  issues: readonly StandardSchemaIssue[];
+  issues: readonly StandardSchemaV1.Issue[];
   success: false;
 };
 
@@ -14,7 +14,7 @@ export type SchemaValidationResult<TValue> =
   | SchemaValidationSuccess<TValue>
   | SchemaValidationFailure;
 
-const createThrownIssue = (error: unknown): StandardSchemaIssue => ({
+const createThrownIssue = (error: unknown): StandardSchemaV1.Issue => ({
   message: error instanceof Error ? error.message : "Schema validation failed",
 });
 

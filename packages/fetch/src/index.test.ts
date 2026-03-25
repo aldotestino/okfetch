@@ -1,16 +1,12 @@
 // oxlint-disable jest/no-conditional-in-test
 import { describe, expect, test } from "bun:test";
 
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Result } from "better-result";
 import { z } from "zod/v4";
 
 import { ValidationError } from "./errors";
-import type {
-  OkfetchError,
-  OkfetchFetch,
-  OkfetchPlugin,
-  StandardSchemaV1,
-} from "./index";
+import type { OkfetchError, OkfetchFetch, OkfetchPlugin } from "./index";
 import { okfetch, validateSchema } from "./index";
 import { validateAllErrors, validateClientErrors } from "./presets";
 import { buildRequestContext } from "./request-context";

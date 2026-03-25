@@ -1,11 +1,12 @@
-import type {
-  InferInput,
-  InferOutput,
-  OkfetchError,
-  OkfetchOptions,
-  StandardSchemaV1,
-} from "@okfetch/fetch";
+import type { OkfetchError, OkfetchOptions } from "@okfetch/fetch";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Result } from "better-result";
+
+type InferInput<TSchema extends StandardSchemaV1> =
+  StandardSchemaV1.InferInput<TSchema>;
+
+type InferOutput<TSchema extends StandardSchemaV1> =
+  StandardSchemaV1.InferOutput<TSchema>;
 
 export type EndpointRequestOverrides = Omit<
   OkfetchOptions,

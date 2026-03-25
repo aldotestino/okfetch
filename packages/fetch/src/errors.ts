@@ -1,6 +1,5 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { TaggedError } from "better-result";
-
-import type { StandardSchemaIssue } from "./standard-schema";
 
 export class FetchError extends TaggedError("FetchError")<{
   readonly message: string;
@@ -15,7 +14,7 @@ export class ParseError extends TaggedError("ParseError")<{
 export class ValidationError extends TaggedError("ValidationError")<{
   readonly type: "output" | "error" | "query" | "params" | "body";
   readonly message: string;
-  readonly issues: readonly StandardSchemaIssue[];
+  readonly issues: readonly StandardSchemaV1.Issue[];
 }>() {}
 
 export class ApiError<T = unknown> extends TaggedError("ApiError")<{

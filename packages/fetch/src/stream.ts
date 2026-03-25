@@ -1,8 +1,8 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Result } from "better-result";
 
 import { ParseError, ValidationError } from "./errors";
 import { validateSchema } from "./schema";
-import type { StandardSchemaV1 } from "./standard-schema";
 
 const extractDataLine = (line: string): string | null => {
   const trimmed = line.trim();
