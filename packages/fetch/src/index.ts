@@ -1,3 +1,9 @@
+/**
+ * Public entrypoint for `@okfetch/fetch`.
+ *
+ * @internal
+ * @since 0.3.1
+ */
 export {
   ApiError,
   FetchError,

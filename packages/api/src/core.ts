@@ -1,10 +1,15 @@
+/**
+ * Client builders for `@okfetch/api`.
+ *
+ * @since 0.3.1
+ */
 import type { OkfetchOptions, OkfetchPlugin } from "@okfetch/fetch";
 import { ValidationError, okfetch, validateSchema } from "@okfetch/fetch";
 
 import type {
   ApiClient,
-  CreateApiOptions,
   ApiServiceClass,
+  CreateApiOptions,
   EndpointCallOptions,
   EndpointDefinition,
   EndpointFunction,
@@ -12,11 +17,13 @@ import type {
   EndpointTree,
 } from "./types";
 
+/** @internal */
 const isEndpoint = (
   value: EndpointDefinition | EndpointTree
 ): value is EndpointDefinition =>
   typeof (value as EndpointDefinition).method === "string";
 
+/** @internal */
 const createValidationPlugin = (
   endpoint: EndpointDefinition,
   enabled: boolean
@@ -71,6 +78,7 @@ const createValidationPlugin = (
   },
 });
 
+/** @internal */
 const mergeHeaders = (
   ...headersList: (Record<string, string> | undefined)[]
 ): Record<string, string> | undefined => {
@@ -78,6 +86,7 @@ const mergeHeaders = (
   return Object.keys(mergedHeaders).length > 0 ? mergedHeaders : undefined;
 };
 
+/** @internal */
 const buildEndpointFn = <TEndpoint extends EndpointDefinition, TGlobalError>(
   baseURL: string,
   endpoint: TEndpoint,
@@ -160,6 +169,7 @@ const buildEndpointFn = <TEndpoint extends EndpointDefinition, TGlobalError>(
   return fn as EndpointFunction<TEndpoint, TGlobalError>;
 };
 
+/** @internal */
 const buildClientNode = <TTree extends EndpointTree, TGlobalError>(
   tree: TTree,
   baseURL: string,
@@ -198,6 +208,12 @@ const buildClientNode = <TTree extends EndpointTree, TGlobalError>(
   return node as ApiClient<TTree, TGlobalError>;
 };
 
+/**
+ * Builds a typed API client from an endpoint tree and shared request defaults.
+ *
+ * @category constructors
+ * @since 0.3.1
+ */
 export const createApi = <TTree extends EndpointTree, TGlobalError = unknown>({
   baseURL,
   endpoints,
@@ -217,9 +233,21 @@ export const createApi = <TTree extends EndpointTree, TGlobalError = unknown>({
     shouldValidateError
   );
 
+/**
+ * Preserves endpoint definitions while letting TypeScript infer the full endpoint tree.
+ *
+ * @category constructors
+ * @since 0.3.1
+ */
 export const createEndpoints = <TTree extends EndpointTree>(endpoints: TTree) =>
   endpoints;
 
+/**
+ * Creates a reusable class wrapper around a generated API client.
+ *
+ * @category constructors
+ * @since 0.3.1
+ */
 export const ApiService = <TTree extends EndpointTree, TGlobalError = unknown>(
   endpoints: TTree,
   errorSchema?: CreateApiOptions<TTree, TGlobalError>["errorSchema"]

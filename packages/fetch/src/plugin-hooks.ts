@@ -1,3 +1,9 @@
+/**
+ * Internal plugin hook orchestration.
+ *
+ * @internal
+ * @since 0.3.1
+ */
 import { Result } from "better-result";
 
 import {
@@ -16,6 +22,7 @@ import type {
   RetryableOkfetchError,
 } from "./types";
 
+/** @internal */
 const isOkfetchError = <TErr>(error: unknown): error is OkfetchError<TErr> =>
   error instanceof FetchError ||
   error instanceof ApiError ||
@@ -24,6 +31,7 @@ const isOkfetchError = <TErr>(error: unknown): error is OkfetchError<TErr> =>
   error instanceof TimeoutError ||
   error instanceof ValidationError;
 
+/** @internal */
 const wrapPluginError = <TErr>(
   error: unknown,
   pluginName: string,
@@ -41,6 +49,7 @@ const wrapPluginError = <TErr>(
   });
 };
 
+/** @internal */
 export const runPluginInit = async (
   plugins: OkfetchPlugin[],
   input: OkfetchPluginInitInput
@@ -65,6 +74,7 @@ export const runPluginInit = async (
   return Result.ok(current);
 };
 
+/** @internal */
 export const runOnRequest = async (
   plugins: OkfetchPlugin[],
   context: OkfetchRequestContext
@@ -89,6 +99,7 @@ export const runOnRequest = async (
   return Result.ok(current);
 };
 
+/** @internal */
 export const runOnResponse = async (
   plugins: OkfetchPlugin[],
   context: OkfetchRequestContext,
@@ -114,6 +125,7 @@ export const runOnResponse = async (
   return Result.ok(current);
 };
 
+/** @internal */
 export const runOnSuccess = async <TRes>(
   plugins: OkfetchPlugin[],
   context: OkfetchRequestContext,
@@ -133,6 +145,7 @@ export const runOnSuccess = async <TRes>(
   }
 };
 
+/** @internal */
 export const runOnFail = async <TErr>(
   plugins: OkfetchPlugin[],
   context: OkfetchRequestContext,
@@ -152,6 +165,7 @@ export const runOnFail = async <TErr>(
   }
 };
 
+/** @internal */
 export const runOnRetry = async (
   plugins: OkfetchPlugin[],
   context: OkfetchRequestContext,

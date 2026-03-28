@@ -1,0 +1,6 @@
+{
+  "projectHomepage": "https://github.com/aldotestino/okfetch/tree/main/packages/api",
+  "srcDir": "src",
+  "outDir": "../../docs/api",
+  "exclude": ["src/**/*.test.ts", "src/index.ts"]
+}

@@ -1,11 +1,19 @@
+/**
+ * Internal request context builders.
+ *
+ * @internal
+ * @since 0.3.1
+ */
 import type {
   OkfetchBody,
   OkfetchOptions,
   OkfetchRequestContext,
 } from "./types";
 
+/** @internal */
 const nonBodyMethods = new Set(["HEAD", "OPTIONS"]);
 
+/** @internal */
 const isDirectBody = (value: unknown): value is OkfetchBody =>
   value instanceof FormData ||
   value instanceof URLSearchParams ||
@@ -15,6 +23,7 @@ const isDirectBody = (value: unknown): value is OkfetchBody =>
   ArrayBuffer.isView(value) ||
   value instanceof ReadableStream;
 
+/** @internal */
 const resolveUrl = (url: string, options: OkfetchOptions): URL => {
   let urlWithParams = url;
   if (options.params) {
@@ -49,6 +58,7 @@ const resolveUrl = (url: string, options: OkfetchOptions): URL => {
   return resolvedUrl;
 };
 
+/** @internal */
 const resolveHeaders = (
   method: OkfetchRequestContext["method"],
   options: OkfetchOptions
@@ -88,6 +98,7 @@ const resolveHeaders = (
   return headers;
 };
 
+/** @internal */
 const resolveBody = (
   method: OkfetchRequestContext["method"],
   options: OkfetchOptions,
@@ -126,6 +137,7 @@ const resolveBody = (
   return JSON.stringify(options.body);
 };
 
+/** @internal */
 export const buildRequestContext = (
   url: string,
   options: OkfetchOptions

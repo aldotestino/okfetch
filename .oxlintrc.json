@@ -1,6 +1,13 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "extends": ["./node_modules/ultracite/config/oxlint/core/.oxlintrc.json"],
+  "settings": {
+    "jsdoc": {
+      "tagNamePreference": {
+        "category": "category"
+      }
+    }
+  },
   "rules": {
     "max-classes-per-file": "off",
     "ban-types": "off",

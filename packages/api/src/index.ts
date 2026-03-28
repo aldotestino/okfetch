@@ -1,3 +1,9 @@
+/**
+ * Public entrypoint for `@okfetch/api`.
+ *
+ * @internal
+ * @since 0.3.1
+ */
 export { ApiService, createApi, createEndpoints } from "./core";
 export type { OkfetchError } from "@okfetch/fetch";
 

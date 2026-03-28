@@ -1,0 +1,6 @@
+{
+  "projectHomepage": "https://github.com/aldotestino/okfetch/tree/main/packages/logger",
+  "srcDir": "src",
+  "outDir": "../../docs/logger",
+  "exclude": ["node_modules/**/*"]
+}

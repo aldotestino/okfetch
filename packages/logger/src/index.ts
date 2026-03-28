@@ -1,11 +1,28 @@
+/**
+ * Public entrypoint for `@okfetch/logger`.
+ *
+ * @since 0.3.1
+ */
 import type { OkfetchPlugin } from "@okfetch/fetch";
 import pino from "pino";
 
+/**
+ * Configuration for the built-in `logger` plugin.
+ *
+ * @category models
+ * @since 0.3.1
+ */
 export type LoggerOptions = {
   pinoOptions?: pino.LoggerOptions;
   logDataOnSuccess?: boolean;
 };
 
+/**
+ * Creates a `pino`-powered plugin that logs request lifecycle events.
+ *
+ * @category constructors
+ * @since 0.3.1
+ */
 export const logger = (options?: LoggerOptions): OkfetchPlugin => {
   const pinoLogger = pino(options?.pinoOptions);
 

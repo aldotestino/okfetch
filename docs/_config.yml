@@ -1,0 +1,7 @@
+title: okfetch docs
+description: API reference for okfetch packages
+theme: just-the-docs
+color_scheme: light
+search_enabled: true
+aux_links:
+  Repository: https://github.com/aldotestino/okfetch
