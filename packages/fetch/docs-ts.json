@@ -1,0 +1,15 @@
+{
+  "projectHomepage": "https://github.com/aldotestino/okfetch/tree/main/packages/fetch",
+  "srcDir": "src",
+  "outDir": "../../docs/fetch",
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/index.ts",
+    "src/plugin-hooks.ts",
+    "src/request-context.ts",
+    "src/response.ts",
+    "src/retry.ts",
+    "src/stream.ts",
+    "src/type-utils.ts"
+  ]
+}

@@ -1,8 +1,16 @@
+/**
+ * Internal retry policy helpers.
+ *
+ * @internal
+ * @since 0.3.1
+ */
 import type { OkfetchOptions, RetryableOkfetchError } from "./types";
 
+/** @internal */
 export const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+/** @internal */
 export const computeRetryDelay = (
   options: OkfetchOptions,
   attempt: number
@@ -30,11 +38,13 @@ export const computeRetryDelay = (
     : Math.min(rawDelay, retry.maxDelay);
 };
 
+/** @internal */
 const isRetryableByDefault = (error: RetryableOkfetchError): boolean =>
   error._tag === "FetchError" ||
   error._tag === "TimeoutError" ||
   (error._tag === "ApiError" && error.statusCode >= 500);
 
+/** @internal */
 export const shouldRetryError = (
   error: RetryableOkfetchError,
   options: OkfetchOptions

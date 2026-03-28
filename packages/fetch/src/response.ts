@@ -1,9 +1,16 @@
+/**
+ * Internal response parsing helpers.
+ *
+ * @internal
+ * @since 0.3.1
+ */
 import { Result } from "better-result";
 
 import { ApiError, ParseError, ValidationError } from "./errors";
 import { validateSchema } from "./schema";
 import type { OkfetchOptions } from "./types";
 
+/** @internal */
 export const shouldValidateErrorResponse = (
   options: OkfetchOptions,
   statusCode: number
@@ -11,6 +18,7 @@ export const shouldValidateErrorResponse = (
   options.apiErrorDataSchema !== undefined &&
   (options.shouldValidateError?.(statusCode) ?? false);
 
+/** @internal */
 export const readResponseText = async (
   response: Response
 ): Promise<Result<string, ParseError>> =>
@@ -23,6 +31,7 @@ export const readResponseText = async (
     try: () => response.text(),
   });
 
+/** @internal */
 export const createApiError = async <TErr>(
   response: Response,
   text: string,
@@ -66,6 +75,7 @@ export const createApiError = async <TErr>(
   });
 };
 
+/** @internal */
 export const parseResponseData = async <TRes>(
   text: string,
   options: OkfetchOptions

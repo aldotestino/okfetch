@@ -1,9 +1,16 @@
+/**
+ * Internal SSE stream parsing helpers.
+ *
+ * @internal
+ * @since 0.3.1
+ */
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Result } from "better-result";
 
 import { ParseError, ValidationError } from "./errors";
 import { validateSchema } from "./schema";
 
+/** @internal */
 const extractDataLine = (line: string): string | null => {
   const trimmed = line.trim();
   if (!trimmed.startsWith("data:")) {
@@ -18,6 +25,7 @@ const extractDataLine = (line: string): string | null => {
   return dataContent;
 };
 
+/** @internal */
 const processStreamChunk = (
   dataContent: string,
   outputSchema?: StandardSchemaV1,
@@ -58,6 +66,7 @@ const processStreamChunk = (
   });
 };
 
+/** @internal */
 export const createParsedStream = <TRes>(
   responseBody: ReadableStream<Uint8Array>,
   outputSchema?: StandardSchemaV1,

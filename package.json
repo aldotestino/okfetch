@@ -12,6 +12,10 @@
     "build:watch": "tsdown --watch",
     "changeset": "changeset",
     "check": "ultracite check",
+    "docs:api": "cd packages/api && bun x docs-ts",
+    "docs:fetch": "cd packages/fetch && bun x docs-ts",
+    "docs:generate": "bun run docs:fetch && bun run docs:api && bun run docs:logger",
+    "docs:logger": "cd packages/logger && bun x docs-ts",
     "fix": "ultracite fix",
     "prepare": "husky",
     "release": "bun run build && changeset publish --access public",
@@ -20,6 +24,7 @@
   "devDependencies": {
     "@changesets/cli": "^2.29.7",
     "@types/bun": "latest",
+    "docs-ts": "^0.8.0",
     "husky": "^9.1.7",
     "oxfmt": "^0.35.0",
     "oxlint": "^1.50.0",

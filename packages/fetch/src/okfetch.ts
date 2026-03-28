@@ -1,3 +1,9 @@
+/**
+ * Request execution for `@okfetch/fetch`.
+ *
+ * @since 0.3.1
+ */
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Result } from "better-result";
 
 import { FetchError, ParseError, TimeoutError } from "./errors";
@@ -18,13 +24,11 @@ import {
 import { computeRetryDelay, shouldRetryError, sleep } from "./retry";
 import { createParsedStream } from "./stream";
 import type {
-  InferOutput,
   OkfetchError,
   OkfetchOptions,
   OkfetchRequestContext,
   OkfetchSuccess,
   RetryableOkfetchError,
-  StandardSchemaV1,
 } from "./types";
 
 type RequestLoopState = {
@@ -319,6 +323,14 @@ const executeAttempt = async <TRes, TErr, Options extends OkfetchOptions>(
   };
 };
 
+/**
+ * Executes a request and returns a `Result` instead of throwing for expected failures.
+ *
+ * `okfetch` supports runtime validation, retries, timeouts, plugins, auth helpers,
+ * and SSE-style stream parsing while staying close to the native `fetch` API.
+ *
+ * @since 0.3.1
+ */
 export function okfetch<
   TOutputSchema extends StandardSchemaV1 | undefined = undefined,
   TApiErrorSchema extends StandardSchemaV1 | undefined = undefined,
@@ -332,11 +344,11 @@ export function okfetch<
 ): Promise<
   Result<
     TOutputSchema extends StandardSchemaV1
-      ? InferOutput<TOutputSchema>
+      ? StandardSchemaV1.InferOutput<TOutputSchema>
       : unknown,
     OkfetchError<
       TApiErrorSchema extends StandardSchemaV1
-        ? InferOutput<TApiErrorSchema>
+        ? StandardSchemaV1.InferOutput<TApiErrorSchema>
         : unknown
     >
   >
@@ -355,12 +367,12 @@ export function okfetch<
   Result<
     ReadableStream<
       TOutputSchema extends StandardSchemaV1
-        ? InferOutput<TOutputSchema>
+        ? StandardSchemaV1.InferOutput<TOutputSchema>
         : unknown
     >,
     OkfetchError<
       TApiErrorSchema extends StandardSchemaV1
-        ? InferOutput<TApiErrorSchema>
+        ? StandardSchemaV1.InferOutput<TApiErrorSchema>
         : unknown
     >
   >
@@ -377,6 +389,15 @@ export function okfetch<TRes = unknown, TErr = unknown>(
   url: string,
   options?: OkfetchOptions
 ): Promise<Result<TRes, OkfetchError<TErr>>>;
+/**
+ * Executes a request and returns a `Result` instead of throwing for expected failures.
+ *
+ * `okfetch` supports runtime validation, retries, timeouts, plugins, auth helpers,
+ * and SSE-style stream parsing while staying close to the native `fetch` API.
+ *
+ * @category constructors
+ * @since 0.3.1
+ */
 export async function okfetch<TRes = unknown, TErr = unknown>(
   url: string,
   options?: OkfetchOptions

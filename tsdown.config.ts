@@ -23,7 +23,7 @@ export default defineConfig([
   },
   {
     ...sharedConfig,
-    entry: ["packages/logger/index.ts"],
+    entry: ["packages/logger/src/index.ts"],
     outDir: "packages/logger/dist",
   },
 ]);
