@@ -57,6 +57,12 @@ Common options:
 - `plugins` for lifecycle extensions
 - `stream: true` for SSE-style streaming
 
+Serialization of `params`, `query`, and form-urlencoded body values:
+
+- keys whose value is `undefined` are omitted from the URL or body, so conditional spreads are safe (`{ query: { limit, cursor } }` with `cursor === undefined` sends no `cursor` parameter)
+- array values repeat the key once per item; `undefined` items are skipped
+- `null` is not treated as absent and serializes to the literal string `"null"`
+
 Prefer this shape in examples:
 
 ```ts

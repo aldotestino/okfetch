@@ -19,6 +19,10 @@ const resolveUrl = (url: string, options: OkfetchOptions): URL => {
   let urlWithParams = url;
   if (options.params) {
     for (const [key, value] of Object.entries(options.params)) {
+      if (value === undefined) {
+        continue;
+      }
+
       urlWithParams = urlWithParams.replace(
         new RegExp(`:${key}(?=[/?]|$)`),
         encodeURIComponent(String(value))
@@ -35,8 +39,16 @@ const resolveUrl = (url: string, options: OkfetchOptions): URL => {
 
   if (options.query) {
     for (const [key, value] of Object.entries(options.query)) {
+      if (value === undefined) {
+        continue;
+      }
+
       if (Array.isArray(value)) {
         for (const item of value) {
+          if (item === undefined) {
+            continue;
+          }
+
           resolvedUrl.searchParams.append(key, String(item));
         }
         continue;
@@ -106,8 +118,16 @@ const resolveBody = (
     for (const [key, value] of Object.entries(
       options.body as Record<string, string | readonly string[]>
     )) {
+      if (value === undefined) {
+        continue;
+      }
+
       if (Array.isArray(value)) {
         for (const item of value) {
+          if (item === undefined) {
+            continue;
+          }
+
           searchParams.append(key, item);
         }
         continue;

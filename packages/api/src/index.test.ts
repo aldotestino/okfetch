@@ -417,4 +417,44 @@ describe("okfetch client package", () => {
       expect(result.value.title).toBe("Hello");
     }
   });
+
+  test("optional query schema fields omit explicit undefined values from the url", async () => {
+    let requestUrl = "";
+    const mockFetch = createMockFetch((request) => {
+      requestUrl = request.url;
+      return Response.json({ items: [] });
+    });
+
+    const endpoints = createEndpoints({
+      catalog: {
+        browse: {
+          method: "GET",
+          output: z.object({ items: z.array(z.string()) }),
+          path: "/browse",
+          query: z.object({
+            cursor: z.string().optional(),
+            limit: z.number(),
+          }),
+        },
+      },
+    });
+
+    const api = createApi({
+      baseURL: "https://example.com",
+      endpoints,
+      fetch: mockFetch,
+    });
+
+    // Mirrors a real integration failure: a conditional spread leaves an
+    // explicit undefined behind, validation accepts it, and the transport
+    // used to serialize it as the literal string "undefined".
+    const cursor = undefined;
+
+    const result = await api.catalog.browse({
+      query: { cursor, limit: 3 },
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(requestUrl).toBe("https://example.com/browse?limit=3");
+  });
 });

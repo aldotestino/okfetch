@@ -186,6 +186,29 @@ import { validateAllErrors, validateClientErrors } from "@okfetch/fetch";
 - `validateClientErrors` validates only `4xx` responses
 - `validateAllErrors` validates both `4xx` and `5xx` responses
 
+### Query, params, and body serialization
+
+`query` values, path `params` values, and `application/x-www-form-urlencoded` body values are serialized as follows:
+
+- Keys whose value is `undefined` are omitted entirely.
+- Array values repeat the key once per item, and `undefined` items are skipped.
+- `null` is not treated as absent: it serializes to the literal string `"null"`.
+
+Skipping `undefined` keeps conditional spreads safe when a value is only sometimes present:
+
+```ts
+const cursor = pages > 1 ? lastPageCursor : undefined;
+
+// When cursor is undefined the request URL has no cursor parameter at all,
+// instead of sending the garbage string "cursor=undefined".
+await okfetch("https://api.example.com/browse", {
+  query: {
+    cursor,
+    limit: 3,
+  },
+});
+```
+
 ### Retries and timeouts
 
 Retries support:
