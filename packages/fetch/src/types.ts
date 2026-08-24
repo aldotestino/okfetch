@@ -207,10 +207,14 @@ export type OkfetchOptions = Prettify<
     errorSchema?: StandardSchemaV1;
     apiErrorDataSchema?: StandardSchemaV1;
     baseURL?: string;
-    params?: Record<string, string | number | boolean>;
+    params?: Record<string, string | number | boolean | undefined>;
     query?: Record<
       string,
-      string | number | boolean | (string | number | boolean)[]
+      | string
+      | number
+      | boolean
+      | undefined
+      | (string | number | boolean | undefined)[]
     >;
     body?: unknown;
     fetch?: OkfetchFetch;

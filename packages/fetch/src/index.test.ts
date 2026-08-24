@@ -885,6 +885,89 @@ describe("request context", () => {
     expect(emptyStringContext.headers.get("content-type")).toBeNull();
     expect(emptyStringContext.body).toBe("");
   });
+
+  test("omits undefined query values from the url", () => {
+    const context = buildRequestContext("https://example.com/browse", {
+      query: {
+        cursor: undefined,
+        limit: 3,
+      },
+    });
+
+    expect(context.url.toString()).toBe("https://example.com/browse?limit=3");
+  });
+
+  test("omits undefined items from array query values", () => {
+    const context = buildRequestContext("https://example.com/search", {
+      query: {
+        limit: 2,
+        tags: ["backend", undefined, "urgent"],
+      },
+    });
+
+    expect(context.url.toString()).toBe(
+      "https://example.com/search?limit=2&tags=backend&tags=urgent"
+    );
+  });
+
+  test("does not render undefined into the url for missing path params", () => {
+    const context = buildRequestContext("/todos/:id", {
+      baseURL: "https://api.example.com",
+      params: {
+        id: undefined,
+      },
+      query: {
+        filter: "open",
+      },
+    });
+
+    expect(context.url.pathname).toBe("/todos/:id");
+    expect(context.url.toString()).not.toContain("undefined");
+  });
+
+  test("omits undefined values from form-urlencoded bodies", () => {
+    const context = buildRequestContext("https://example.com/form", {
+      body: {
+        cursor: undefined,
+        tags: ["a", undefined, "b"],
+        title: "hello",
+      },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      method: "PUT",
+    });
+
+    expect(context.body).toBe("tags=a&tags=b&title=hello");
+  });
+
+  test("serializes null values to the literal string null", () => {
+    // Unlike undefined, null is intentionally not treated as absent.
+    const cursor = null as unknown as string;
+
+    const queryContext = buildRequestContext("https://example.com/browse", {
+      query: {
+        cursor,
+        limit: 3,
+      },
+    });
+
+    expect(queryContext.url.toString()).toBe(
+      "https://example.com/browse?cursor=null&limit=3"
+    );
+
+    const formContext = buildRequestContext("https://example.com/form", {
+      body: {
+        cursor,
+        title: "hello",
+      },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    });
+
+    expect(formContext.body).toBe("cursor=null&title=hello");
+  });
 });
 
 describe("response helpers", () => {
@@ -1225,6 +1308,28 @@ describe("stream helpers", () => {
 });
 
 describe("okfetch edge cases", () => {
+  test("does not serialize undefined query values into the request url", async () => {
+    let requestUrl = "";
+    const mockFetch = createMockFetch((request) => {
+      requestUrl = request.url;
+      return Response.json({ ok: true });
+    });
+
+    // Simulates a conditional spread producing an explicit undefined.
+    const cursor = undefined;
+
+    const result = await okfetch("https://example.com/browse", {
+      fetch: mockFetch,
+      query: {
+        cursor,
+        limit: 3,
+      },
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(requestUrl).toBe("https://example.com/browse?limit=3");
+  });
+
   test("wraps onRequest and onResponse hook failures as PluginError", async () => {
     const onRequestResult = await okfetch("https://example.com", {
       plugins: [
