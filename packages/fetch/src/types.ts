@@ -46,7 +46,7 @@ type CustomAuth = {
 export type Auth = BasicAuth | BearerAuth | CustomAuth;
 
 export type NonBodyMethods = "HEAD" | "OPTIONS";
-export type BodyMethods = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+export type BodyMethods = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "QUERY";
 export type Method = BodyMethods | NonBodyMethods;
 
 type FixedRetryOptions = {
