@@ -221,6 +221,11 @@ export type OkfetchOptions = Prettify<
     timeout?: number;
     stream?: boolean;
     validateOutput?: boolean;
+    /**
+     * Limits which status codes get their parsed error body validated against
+     * `apiErrorDataSchema`. Defaults to validating every error response when a
+     * schema is set; excluded statuses still receive the parsed body, unvalidated.
+     */
     shouldValidateError?: (statusCode: number) => boolean;
     plugins?: OkfetchPlugin[];
     /** Retry configuration. Supports "fixed", "linear" and "exponential" backoff strategies. */
