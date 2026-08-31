@@ -496,7 +496,7 @@ describe("okfetch v2 plugins", () => {
     expect(events).toEqual(["retry:0:true:FetchError"]);
   });
 
-  test("shouldValidateError defaults to skipping error schema parsing", async () => {
+  test("error schema parses and validates error data by default", async () => {
     const mockFetch = createMockFetch(() =>
       Response.json({ code: "NOPE" }, { status: 400 })
     );
@@ -506,37 +506,38 @@ describe("okfetch v2 plugins", () => {
       {
         apiErrorDataSchema: z.object({ code: z.string() }),
         fetch: mockFetch,
-      }
-    );
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr() && result.error._tag === "ApiError") {
-      expect(result.error.data).toBeUndefined();
-      expect(result.error.text).toContain("NOPE");
-    }
-  });
-
-  test("shouldValidateError parses typed error data when enabled", async () => {
-    const mockFetch = createMockFetch(() =>
-      Response.json({ code: "NOPE" }, { status: 400 })
-    );
-
-    const result = await okfetch<unknown, { code: string }>(
-      "https://example.com/resource",
-      {
-        apiErrorDataSchema: z.object({ code: z.string() }),
-        fetch: mockFetch,
-        shouldValidateError: () => true,
       }
     );
 
     expect(result.isErr()).toBe(true);
     if (result.isErr() && result.error._tag === "ApiError") {
       expect(result.error.data).toEqual({ code: "NOPE" });
+      expect(result.error.text).toContain("NOPE");
     }
   });
 
-  test("shouldValidateError falls back to ApiError when validation fails", async () => {
+  test("shouldValidateError opt-out still parses error data without validating", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ code: 42 }, { status: 400 })
+    );
+
+    const result = await okfetch<unknown, { code: string }>(
+      "https://example.com/resource",
+      {
+        apiErrorDataSchema: z.object({ code: z.string() }),
+        fetch: mockFetch,
+        shouldValidateError: () => false,
+      }
+    );
+
+    expect(result.isErr()).toBe(true);
+    if (result.isErr() && result.error._tag === "ApiError") {
+      const rawData = result.error.data as unknown;
+      expect(rawData).toEqual({ code: 42 });
+    }
+  });
+
+  test("keeps raw parsed error data when validation fails", async () => {
     const mockFetch = createMockFetch(() =>
       Response.json({ message: 42 }, { status: 400 })
     );
@@ -552,8 +553,25 @@ describe("okfetch v2 plugins", () => {
 
     expect(result.isErr()).toBe(true);
     if (result.isErr() && result.error._tag === "ApiError") {
-      expect(result.error.data).toBeUndefined();
+      const rawData = result.error.data as unknown;
+      expect(rawData).toEqual({ message: 42 });
       expect(result.error.text).toContain("42");
+    }
+  });
+
+  test("error data stays undefined without an error schema", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ code: "NOPE" }, { status: 400 })
+    );
+
+    const result = await okfetch("https://example.com/resource", {
+      fetch: mockFetch,
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (result.isErr() && result.error._tag === "ApiError") {
+      expect(result.error.data).toBeUndefined();
+      expect(result.error.text).toContain("NOPE");
     }
   });
 
@@ -1027,6 +1045,17 @@ describe("response helpers", () => {
         500
       )
     ).toBe(true);
+
+    expect(
+      shouldValidateErrorResponse(
+        {
+          apiErrorDataSchema: z.object({ code: z.string() }),
+        },
+        500
+      )
+    ).toBe(true);
+
+    expect(shouldValidateErrorResponse({}, 500)).toBe(false);
 
     expect(
       shouldValidateErrorResponse(

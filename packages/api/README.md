@@ -159,6 +159,8 @@ Useful options:
 - `errorSchema`
 - `shouldValidateError`
 
+When `errorSchema` (or an endpoint-level `error` schema) is set, error response bodies are JSON-parsed into `ApiError.data` and validated against the schema by default. Use `shouldValidateError` to limit validation to specific status codes — excluded statuses still get the parsed body, typed by the schema but not validated.
+
 ```ts
 import { validateClientErrors } from "@okfetch/fetch";
 
@@ -169,6 +171,7 @@ const api = createApi({
     code: z.string(),
     message: z.string(),
   }),
+  // optional: only validate 4xx error bodies
   shouldValidateError: validateClientErrors,
 });
 ```
