@@ -122,7 +122,18 @@ await okfetch("https://api.example.com/me", {
 });
 ```
 
-`apiErrorDataSchema` validates structured error bodies when `shouldValidateError` allows it:
+Providing `apiErrorDataSchema` parses structured error bodies into `ApiError.data`, validated against the schema by default:
+
+```ts
+await okfetch("https://api.example.com/me", {
+  apiErrorDataSchema: z.object({
+    code: z.string(),
+    message: z.string(),
+  }),
+});
+```
+
+`shouldValidateError` limits validation to specific status codes. Statuses it excludes still get the JSON-parsed body on `ApiError.data`, just without validation — the schema then only types the data. When validation runs and fails, the raw parsed body is kept on `data` instead of being dropped.
 
 ```ts
 import { validateClientErrors } from "@okfetch/fetch";
@@ -132,6 +143,7 @@ await okfetch("https://api.example.com/me", {
     code: z.string(),
     message: z.string(),
   }),
+  // only validate 4xx responses; 5xx bodies are parsed but not validated
   shouldValidateError: validateClientErrors,
 });
 ```

@@ -170,7 +170,6 @@ describe("okfetch client package", () => {
       }),
       errorSchema: z.object({ message: z.string() }),
       fetch: mockFetch,
-      shouldValidateError: () => true,
     });
 
     const result = await api.user();
@@ -195,7 +194,6 @@ describe("okfetch client package", () => {
       }),
       errorSchema: z.object({ message: z.string() }),
       fetch: mockFetch,
-      shouldValidateError: () => true,
     });
 
     const result = await api.me();
@@ -362,9 +360,9 @@ describe("okfetch client package", () => {
     }
   });
 
-  test("shouldValidateError controls global error schema parsing", async () => {
+  test("shouldValidateError opt-out still parses global error schema data", async () => {
     const mockFetch = createMockFetch(() =>
-      Response.json({ message: "No access" }, { status: 401 })
+      Response.json({ message: 42 }, { status: 401 })
     );
 
     const api = createApi({
@@ -377,13 +375,15 @@ describe("okfetch client package", () => {
       }),
       errorSchema: z.object({ message: z.string() }),
       fetch: mockFetch,
+      shouldValidateError: () => false,
     });
 
     const result = await api.me();
     expect(result.isErr()).toBe(true);
     if (result.isErr() && result.error._tag === "ApiError") {
-      expect(result.error.data).toBeUndefined();
-      expect(result.error.text).toContain("No access");
+      const rawData = result.error.data as unknown;
+      expect(rawData).toEqual({ message: 42 });
+      expect(result.error.text).toContain("42");
     }
   });
 

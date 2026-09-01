@@ -9,7 +9,7 @@ export const shouldValidateErrorResponse = (
   statusCode: number
 ): boolean =>
   options.apiErrorDataSchema !== undefined &&
-  (options.shouldValidateError?.(statusCode) ?? false);
+  (options.shouldValidateError?.(statusCode) ?? true);
 
 export const readResponseText = async (
   response: Response
@@ -35,10 +35,7 @@ export const createApiError = async <TErr>(
     text,
   });
 
-  if (
-    errorDataSchema === undefined ||
-    !shouldValidateErrorResponse(options, response.status)
-  ) {
+  if (errorDataSchema === undefined) {
     return baseError;
   }
 
@@ -50,16 +47,25 @@ export const createApiError = async <TErr>(
     return baseError;
   }
 
+  if (!shouldValidateErrorResponse(options, response.status)) {
+    return new ApiError<TErr>({
+      data: apiErrorDataResult.value as TErr,
+      statusCode: response.status,
+      statusText: response.statusText,
+      text,
+    });
+  }
+
   const parsedApiErrorData = await validateSchema(
     errorDataSchema,
     apiErrorDataResult.value
   );
-  if (!parsedApiErrorData.success) {
-    return baseError;
-  }
 
+  // On validation failure keep the raw parsed body rather than dropping it
   return new ApiError<TErr>({
-    data: parsedApiErrorData.data as TErr,
+    data: (parsedApiErrorData.success
+      ? parsedApiErrorData.data
+      : apiErrorDataResult.value) as TErr,
     statusCode: response.status,
     statusText: response.statusText,
     text,
