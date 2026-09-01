@@ -3,8 +3,8 @@ import { ValidationError, okfetch, validateSchema } from "@okfetch/fetch";
 
 import type {
   ApiClient,
-  CreateApiOptions,
   ApiServiceClass,
+  CreateApiOptions,
   EndpointCallOptions,
   EndpointDefinition,
   EndpointFunction,
