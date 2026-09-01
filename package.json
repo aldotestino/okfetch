@@ -15,7 +15,7 @@
     "check": "ultracite check",
     "fix": "ultracite fix",
     "prepare": "husky",
-    "release": "bun run build && changeset publish --access public",
+    "release": "bun run build && changeset publish",
     "version-packages": "changeset version && bun install"
   },
   "devDependencies": {
