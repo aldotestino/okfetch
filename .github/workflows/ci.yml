@@ -24,7 +24,7 @@ jobs:
         run: bun install
 
       - name: Type check
-        run: bunx tsc --noEmit
+        run: bun typecheck
 
       - name: Lint
         run: bun check
