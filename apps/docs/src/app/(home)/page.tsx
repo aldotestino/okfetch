@@ -1,3 +1,5 @@
+import Image from 'next/image';
+import icon from '../icon.svg';
 import Link from 'next/link';
 
 const packages = [
@@ -26,7 +28,8 @@ const packages = [
 export default function HomePage() {
   return (
     <main className="flex flex-col items-center justify-center flex-1 px-4 py-16 text-center">
-      <h1 className="text-4xl font-bold font-mono">okfetch</h1>
+      <Image src={icon} alt="" width={88} height={88} priority />
+      <h1 className="mt-6 text-4xl font-bold font-mono">okfetch</h1>
       <p className="mt-4 max-w-xl text-fd-muted-foreground">
         A small family of TypeScript-first HTTP packages that make <code>fetch</code> safer and
         more composable — without hiding how the web platform works.
