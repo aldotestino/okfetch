@@ -11,6 +11,7 @@
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
     "typecheck:compat": "bun run build && bunx --package typescript@5.4.5 tsc --project tests/typescript-compat/tsconfig.json",
+    "test:types": "tstyche",
     "build:watch": "tsdown --watch",
     "changeset": "changeset",
     "lint": "oxlint",
@@ -29,6 +30,7 @@
     "oxlint": "^1.81.0",
     "oxlint-tsgolint": "7.0.2001",
     "tsdown": "0.22.14",
+    "tstyche": "7.2.3",
     "typescript": "7.0.2"
   }
 }

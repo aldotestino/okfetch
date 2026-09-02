@@ -29,6 +29,9 @@ jobs:
       - name: Check TypeScript 5.4 declarations
         run: bun run typecheck:compat
 
+      - name: Test public types
+        run: bun run test:types
+
       - name: Lint
         run: bun run lint
 
