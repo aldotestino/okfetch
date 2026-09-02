@@ -101,7 +101,7 @@ const fetchResponse = async (
 
       return new FetchError({
         cause: error,
-        message: "Fetch request failed",
+        message: Error.isError(error) ? error.message : "Fetch request failed",
       });
     },
     try: () => (options.fetch ?? globalThis.fetch)(url, fetchInit),

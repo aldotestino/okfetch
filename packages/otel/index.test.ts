@@ -217,7 +217,7 @@ describe("@okfetch/otel", () => {
 
     const span = getSingleSpan();
     expect(span.status.code).toBe(SpanStatusCode.ERROR);
-    expect(span.status.message).toBe("Fetch request failed");
+    expect(span.status.message).toBe("connection refused");
     expect(span.attributes["error.type"]).toBe("FetchError");
     expect(span.attributes["okfetch.error.tag"]).toBe("FetchError");
     expect(span.attributes["http.response.status_code"]).toBeUndefined();

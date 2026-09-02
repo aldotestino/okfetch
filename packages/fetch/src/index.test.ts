@@ -364,6 +364,9 @@ describe("okfetch v2 plugins", () => {
     });
 
     expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error.message).toBe("network down");
+    }
     expect(events).toEqual(["fail:true:FetchError"]);
   });
 
