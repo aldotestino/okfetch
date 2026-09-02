@@ -249,12 +249,13 @@ await okfetch("https://api.example.com/todos/:id", {
 Key behavior to explain when relevant:
 
 - one `CLIENT` span per request, covering every retry attempt
-- records method, URL, path, query, and request headers; never records bodies
+- records method, URL, path, query, and response status; never records body contents
+- captures selected request/response headers and observable body sizes only when explicitly enabled
 - redacts sensitive headers and query parameters by name (such as `authorization` and `token`) and by value (JWTs and `Bearer`/`Basic` credentials under any name)
-- records the status code, and the status text when the request fails
+- records standards-compliant error types and status codes when the request fails
 - injects `traceparent` into the outgoing request by default
 
-Main options: `tracer`, `captureRequestHeaders`, `propagateTraceContext`, and `redact` (`{ headers?, queryParams?, values? }`, where an array replaces the default list and a function such as `(defaults) => [...defaults, "x-tenant"]` extends it).
+Main options: `tracer`, `captureRequestHeaders`, `captureResponseHeaders`, `captureBodySizes`, `knownMethods`, `propagateTraceContext`, and `redact` (`{ headers?, queryParams?, values? }`, where an array replaces the default list and a function such as `(defaults) => [...defaults, "x-tenant"]` extends it).
 
 ## Plugin authoring
 

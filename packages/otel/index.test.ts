@@ -29,6 +29,7 @@ import {
   DEFAULT_REDACTED_NAME_PATTERN,
   DEFAULT_REDACTED_QUERY_PARAMS,
   DEFAULT_REDACTED_VALUE_PATTERNS,
+  DEFAULT_KNOWN_HTTP_METHODS,
   otel,
   REDACTED_VALUE,
 } from "./index";
@@ -113,7 +114,12 @@ describe("@okfetch/otel", () => {
         Accept: "application/json",
         "X-Api-Key": "another-secret",
       },
-      plugins: [otel({ tracer })],
+      plugins: [
+        otel({
+          captureRequestHeaders: ["accept", "authorization", "x-api-key"],
+          tracer,
+        }),
+      ],
       query: { page: 2, token: "query-secret" },
     });
 
@@ -130,6 +136,7 @@ describe("@okfetch/otel", () => {
       "http.request.method": "GET",
       "http.response.status_code": 200,
       "server.address": "api.example.com",
+      "server.port": 443,
       "url.full": `https://api.example.com/todos?page=2&token=${encodeURIComponent(REDACTED_VALUE)}`,
       "url.path": "/todos",
       "url.query": `page=2&token=${encodeURIComponent(REDACTED_VALUE)}`,
@@ -158,6 +165,98 @@ describe("@okfetch/otel", () => {
     expect(JSON.stringify(span.events)).not.toContain("body-secret");
   });
 
+  test("records known and unknown methods according to the semantic conventions", async () => {
+    const { fetch } = createMockFetch(() => Response.json({ ok: true }));
+    const useAclMethod: OkfetchPlugin = {
+      name: "acl-method",
+      version: "1.0.0",
+      hooks: {
+        onRequest: (ctx) => ({ ...ctx, method: "ACL" }),
+      },
+    };
+
+    await okfetch("https://api.example.com/resources", {
+      fetch,
+      plugins: [useAclMethod, otel({ tracer })],
+    });
+
+    const unknown = getSingleSpan();
+    expect(unknown.name).toBe("HTTP");
+    expect(unknown.attributes["http.request.method"]).toBe("_OTHER");
+    expect(unknown.attributes["http.request.method_original"]).toBe("ACL");
+
+    exporter.reset();
+
+    await okfetch("https://api.example.com/resources", {
+      fetch,
+      plugins: [useAclMethod, otel({ knownMethods: ["ACL"], tracer })],
+    });
+
+    const configured = getSingleSpan();
+    expect(configured.name).toBe("ACL");
+    expect(configured.attributes["http.request.method"]).toBe("ACL");
+    expect(
+      configured.attributes["http.request.method_original"]
+    ).toBeUndefined();
+  });
+
+  test("captures body sizes only when explicitly enabled and accurately observable", async () => {
+    const responseBody = "hello";
+    const { fetch } = createMockFetch(
+      () =>
+        new Response(responseBody, {
+          headers: { "Content-Length": String(responseBody.length) },
+        })
+    );
+    const body = { title: "cafe" };
+
+    await okfetch("https://api.example.com/todos", {
+      body,
+      fetch,
+      plugins: [otel({ captureBodySizes: true, tracer })],
+    });
+
+    const span = getSingleSpan();
+    expect(span.attributes["http.request.body.size"]).toBe(
+      new TextEncoder().encode(JSON.stringify(body)).byteLength
+    );
+    expect(span.attributes["http.response.body.size"]).toBe(5);
+  });
+
+  test("captures only explicitly configured response headers", async () => {
+    const { fetch } = createMockFetch(() =>
+      Response.json(
+        { ok: true },
+        {
+          headers: {
+            "X-Api-Key": "secret",
+            "X-Ignored": "ignored",
+            "X-Request-Id": "req-1",
+          },
+        }
+      )
+    );
+
+    await okfetch("https://api.example.com/todos", {
+      fetch,
+      headers: { "X-Ignored": "request-value" },
+      plugins: [
+        otel({
+          captureResponseHeaders: ["x-api-key", "x-request-id"],
+          tracer,
+        }),
+      ],
+    });
+
+    const span = getSingleSpan();
+    expect(span.attributes).toMatchObject({
+      "http.response.header.x-api-key": [REDACTED_VALUE],
+      "http.response.header.x-request-id": ["req-1"],
+    });
+    expect(span.attributes["http.request.header.x-ignored"]).toBeUndefined();
+    expect(span.attributes["http.response.header.x-ignored"]).toBeUndefined();
+  });
+
   test("uses the path template as span name and url.template when params are used", async () => {
     const { fetch } = createMockFetch(() => Response.json({ ok: true }));
 
@@ -177,7 +276,7 @@ describe("@okfetch/otel", () => {
     );
   });
 
-  test("records status code and text on api errors", async () => {
+  test("records status code without a redundant status description on api errors", async () => {
     const { fetch } = createMockFetch(() =>
       Response.json(
         { message: "nope" },
@@ -193,14 +292,10 @@ describe("@okfetch/otel", () => {
     expect(result.isErr()).toBe(true);
 
     const span = getSingleSpan();
-    expect(span.status).toEqual({
-      code: SpanStatusCode.ERROR,
-      message: "404 Not Found",
-    });
+    expect(span.status).toEqual({ code: SpanStatusCode.ERROR });
     expect(span.attributes).toMatchObject({
       "error.type": "404",
       "http.response.status_code": 404,
-      "http.response.status_text": "Not Found",
       "okfetch.error.tag": "ApiError",
     });
     expect(JSON.stringify(span.attributes)).not.toContain("nope");
@@ -298,10 +393,7 @@ describe("@okfetch/otel", () => {
     expect(requests).toHaveLength(2);
 
     const span = getSingleSpan();
-    expect(span.status).toEqual({
-      code: SpanStatusCode.ERROR,
-      message: "500 Server Error",
-    });
+    expect(span.status).toEqual({ code: SpanStatusCode.ERROR });
     expect(span.attributes["http.request.resend_count"]).toBe(1);
     expect(span.events).toHaveLength(1);
   });
@@ -420,6 +512,7 @@ describe("@okfetch/otel", () => {
             headers: (defaults) => [...defaults, "x-tenant"],
             queryParams: (defaults) => [...defaults, "Customer"],
           },
+          captureRequestHeaders: true,
           tracer,
         }),
       ],
@@ -446,7 +539,7 @@ describe("@okfetch/otel", () => {
         "X-Amz-Date": "20260902T000000Z",
         "X-Amz-Security-Token": "session-secret",
       },
-      plugins: [otel({ tracer })],
+      plugins: [otel({ captureRequestHeaders: true, tracer })],
       query: {
         "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
         "X-Amz-Credential": "AKIA/20260902/us-east-1/s3/aws4_request",
@@ -484,7 +577,7 @@ describe("@okfetch/otel", () => {
 
     await okfetch("https://auth.example.com/oauth/callback", {
       fetch,
-      plugins: [otel({ tracer })],
+      plugins: [otel({ captureRequestHeaders: true, tracer })],
       query: {
         code: "oauth-code-secret",
         code_verifier: "pkce-secret",
@@ -513,7 +606,7 @@ describe("@okfetch/otel", () => {
         "X-Plain": "plain value",
         "X-Proxy-Header": "Bearer opaque-token-value",
       },
-      plugins: [otel({ tracer })],
+      plugins: [otel({ captureRequestHeaders: true, tracer })],
       query: { blob: sampleJwt, jwt: "named-jwt", page: 3 },
     });
 
@@ -542,6 +635,7 @@ describe("@okfetch/otel", () => {
       headers: { "X-Blob": sampleJwt, "X-Ticket": "TKT-12345" },
       plugins: [
         otel({
+          captureRequestHeaders: true,
           redact: { values: (defaults) => [...defaults, /^TKT-/] },
           tracer,
         }),
@@ -561,7 +655,9 @@ describe("@okfetch/otel", () => {
     await okfetch("https://api.example.com/todos", {
       fetch,
       headers: { "X-Blob": sampleJwt },
-      plugins: [otel({ redact: { values: [] }, tracer })],
+      plugins: [
+        otel({ captureRequestHeaders: true, redact: { values: [] }, tracer }),
+      ],
     });
 
     const replaced = getSingleSpan();
@@ -582,6 +678,7 @@ describe("@okfetch/otel", () => {
       },
       plugins: [
         otel({
+          captureRequestHeaders: true,
           redact: { headers: (defaults) => [...defaults, /^x-internal-/i] },
           tracer,
         }),
@@ -613,6 +710,7 @@ describe("@okfetch/otel", () => {
       headers: { "X-Tenant": "acme" },
       plugins: [
         otel({
+          captureRequestHeaders: true,
           redact: { headers: ["x-tenant"], queryParams: [], values: [] },
           tracer,
         }),
@@ -648,10 +746,8 @@ describe("@okfetch/otel", () => {
     expect(serialized).not.toContain("template-secret");
     expect(serialized).not.toContain("fragment-secret");
     expect(serialized).not.toContain("pass");
-    expect(span.name).toBe("GET https://api.example.com/todos/:id");
-    expect(span.attributes["url.template"]).toBe(
-      "https://api.example.com/todos/:id"
-    );
+    expect(span.name).toBe("GET /todos/:id");
+    expect(span.attributes["url.template"]).toBe("/todos/:id");
     expect(span.attributes["url.full"]).toBe(
       `https://${encodeURIComponent(REDACTED_VALUE)}:${encodeURIComponent(REDACTED_VALUE)}@api.example.com/todos/7?token=${encodeURIComponent(REDACTED_VALUE)}&page=1`
     );
@@ -755,6 +851,7 @@ describe("@okfetch/otel", () => {
   });
 
   test("exposes the default redaction lists", () => {
+    expect(DEFAULT_KNOWN_HTTP_METHODS).toContain("QUERY");
     expect(DEFAULT_REDACTED_HEADERS).toContain("authorization");
     expect(DEFAULT_REDACTED_HEADERS).toContain("x-amz-security-token");
     expect(DEFAULT_REDACTED_QUERY_PARAMS).toContain("token");

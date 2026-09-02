@@ -173,7 +173,7 @@ const result = await okfetch("https://example.com/todos/:id", {
 });
 ```
 
-Each request becomes a single OpenTelemetry client span with the method, URL, query, and headers recorded (sensitive values redacted, bodies never captured), plus the status code and text on failure.
+Each request becomes a single OpenTelemetry client span with standards-compliant method, URL, server, retry, response status, and error attributes. Header and body-size attributes are opt-in; body contents are never captured.
 
 ## How The Packages Fit Together
 

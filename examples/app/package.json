@@ -11,6 +11,9 @@
     "@okfetch/api": "workspace:*",
     "@okfetch/fetch": "workspace:*",
     "@okfetch/logger": "workspace:*",
+    "@okfetch/otel": "workspace:*",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
+    "@opentelemetry/sdk-node": "^0.222.0",
     "better-result": "^3.0.1",
     "zod": "^4.5.4"
   },
