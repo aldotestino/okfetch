@@ -427,6 +427,60 @@ describe("@okfetch/otel", () => {
     expect(exporter.getFinishedSpans()).toHaveLength(0);
   });
 
+  test("ends the span when a later plugin's onRequest throws", async () => {
+    const { fetch, requests } = createMockFetch(() =>
+      Response.json({ ok: true })
+    );
+    const brokenRequest: OkfetchPlugin = {
+      name: "broken-request",
+      version: "1.0.0",
+      hooks: {
+        onRequest: () => {
+          throw new Error("boom");
+        },
+      },
+    };
+
+    const result = await okfetch("https://api.example.com/todos", {
+      fetch,
+      plugins: [otel({ tracer }), brokenRequest],
+    });
+
+    expect(result.isErr()).toBe(true);
+    expect(requests).toHaveLength(0);
+
+    const span = getSingleSpan();
+    expect(span.status.code).toBe(SpanStatusCode.ERROR);
+    expect(span.attributes["error.type"]).toBe("PluginError");
+    expect(span.attributes["http.response.status_code"]).toBeUndefined();
+  });
+
+  test("ends the span when the response body cannot be read", async () => {
+    const brokenBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("broken body"));
+      },
+    });
+    const { fetch } = createMockFetch(
+      () => new Response(brokenBody, { status: 200 })
+    );
+
+    const result = await okfetch("https://api.example.com/todos", {
+      fetch,
+      plugins: [otel({ tracer })],
+    });
+
+    expect(result.isErr()).toBe(true);
+
+    const span = getSingleSpan();
+    expect(span.status.code).toBe(SpanStatusCode.ERROR);
+    expect(span.attributes).toMatchObject({
+      "error.type": "ParseError",
+      "http.response.status_code": 200,
+      "okfetch.error.tag": "ParseError",
+    });
+  });
+
   test("exposes the default redaction lists", () => {
     expect(DEFAULT_REDACTED_HEADERS).toContain("authorization");
     expect(DEFAULT_REDACTED_QUERY_PARAMS).toContain("token");

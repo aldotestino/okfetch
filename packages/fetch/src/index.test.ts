@@ -1408,6 +1408,68 @@ describe("okfetch edge cases", () => {
     }
   });
 
+  test("onFail fires when mutating hooks or the body read fail", async () => {
+    const events: string[] = [];
+    const observer: OkfetchPlugin = {
+      name: "observer",
+      version: "1.0.0",
+      hooks: {
+        onFail: (_context, response, error) => {
+          events.push(`fail:${response?.status ?? "none"}:${error._tag}`);
+        },
+      },
+    };
+
+    await okfetch("https://example.com", {
+      fetch: createMockFetch(() => Response.json({ ok: true })),
+      plugins: [
+        observer,
+        {
+          name: "broken-request",
+          version: "1.0.0",
+          hooks: {
+            onRequest: () => {
+              throw new Error("boom");
+            },
+          },
+        },
+      ],
+    });
+
+    await okfetch("https://example.com", {
+      fetch: createMockFetch(() => Response.json({ ok: true })),
+      plugins: [
+        observer,
+        {
+          name: "broken-response",
+          version: "1.0.0",
+          hooks: {
+            onResponse: () => {
+              throw new Error("boom");
+            },
+          },
+        },
+      ],
+    });
+
+    const brokenBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("broken body"));
+      },
+    });
+    const bodyResult = await okfetch("https://example.com", {
+      fetch: createMockFetch(() => new Response(brokenBody, { status: 200 })),
+      plugins: [observer],
+    });
+
+    expect(bodyResult.isErr()).toBe(true);
+    expect(events).toEqual([
+      "fail:none:PluginError",
+      "fail:200:PluginError",
+      "fail:200:ParseError",
+    ]);
+  });
+
   test("returns timeout and stream body parse failures", async () => {
     const timeoutResult = await okfetch("https://example.com/timeout", {
       fetch: createMockFetch(
