@@ -26,11 +26,18 @@ npm install @okfetch/logger @okfetch/fetch pino
 ```ts
 import { okfetch } from "@okfetch/fetch";
 import { logger } from "@okfetch/logger";
+import pino from "pino";
+
+const pinoInstance = pino({
+  level: "info",
+  redact: ["req.headers.authorization"],
+});
 
 const result = await okfetch("https://example.com/health", {
   plugins: [
     logger({
       logDataOnSuccess: true,
+      logger: pinoInstance,
     }),
   ],
 });
@@ -43,9 +50,12 @@ const result = await okfetch("https://example.com/health", {
 Options:
 
 - `logDataOnSuccess?: boolean`
+- `logger?: Logger`
 - `pinoOptions?: pino.LoggerOptions`
 
 When `logDataOnSuccess` is `true`, the plugin logs the parsed success payload in addition to the response status.
+
+Pass `logger` to use any logger with `info`, `warn`, and `error` methods that accept a message string. This includes existing Pino instances and compatible loggers from other libraries. `logger` and `pinoOptions` are mutually exclusive. When no logger is provided, the plugin creates a Pino instance using `pinoOptions`.
 
 ## What It Logs
 
