@@ -1,6 +1,9 @@
 import { defineConfig } from "oxlint";
 
 export default defineConfig({
+  // apps/** is also passed as --ignore-pattern in the lint scripts: apps/docs
+  // has its own .oxlintrc.json, and a nested config makes oxlint lint that
+  // directory regardless of what this list says.
   ignorePatterns: [".agents/**", "apps/**"],
   plugins: [
     "eslint",
