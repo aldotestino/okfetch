@@ -433,6 +433,28 @@ describe("@okfetch/otel", () => {
     );
   });
 
+  test("redacts OAuth authorization codes and grant secrets", async () => {
+    const { fetch } = createMockFetch(() => Response.json({ ok: true }));
+
+    await okfetch("https://auth.example.com/oauth/callback", {
+      fetch,
+      plugins: [otel({ tracer })],
+      query: {
+        code: "oauth-code-secret",
+        code_verifier: "pkce-secret",
+        state: "csrf-state",
+      },
+    });
+
+    const span = getSingleSpan();
+    const serialized = JSON.stringify(span.attributes);
+    expect(serialized).not.toContain("oauth-code-secret");
+    expect(serialized).not.toContain("pkce-secret");
+    expect(span.attributes["url.query"]).toBe(
+      `code=${encodeURIComponent(REDACTED_VALUE)}&code_verifier=${encodeURIComponent(REDACTED_VALUE)}&state=csrf-state`
+    );
+  });
+
   test("redacts unlisted credential-like names and accepts custom patterns", async () => {
     const { fetch } = createMockFetch(() => Response.json({ ok: true }));
 

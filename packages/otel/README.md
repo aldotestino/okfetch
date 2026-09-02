@@ -64,7 +64,7 @@ otel({
 Exports:
 
 - `DEFAULT_REDACTED_HEADERS` - `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-auth-token`, `api-key`, `x-amz-security-token`, `x-amz-credential`, `x-amz-signature`, plus `DEFAULT_REDACTED_NAME_PATTERN`
-- `DEFAULT_REDACTED_QUERY_PARAMS` - common credential parameter names such as `token`, `access_token`, `api_key`, `password`, `secret`, `signature`, the AWS SigV4 presigned-URL fields `X-Amz-Credential`, `X-Amz-Security-Token`, `X-Amz-Signature`, plus `DEFAULT_REDACTED_NAME_PATTERN`
+- `DEFAULT_REDACTED_QUERY_PARAMS` - common credential parameter names such as `token`, `access_token`, `api_key`, `password`, `secret`, `signature`, the OAuth grant parameters `code`, `code_verifier`, `client_assertion`, `assertion`, the AWS SigV4 presigned-URL fields `X-Amz-Credential`, `X-Amz-Security-Token`, `X-Amz-Signature`, plus `DEFAULT_REDACTED_NAME_PATTERN`
 - `DEFAULT_REDACTED_NAME_PATTERN` - a pattern included in both default lists; any name containing `auth`, `credential`, `passw`, `secret`, `session`, `sig`, `token`, or `api-key` is redacted even when not listed explicitly. Replacing a list with an array drops it, so include it yourself if you still want it.
 - `RedactionMatcher`, `RedactionList`, `RedactionOption` - the types behind the `redact` option
 - `REDACTED_VALUE` - the `[REDACTED]` placeholder written in place of redacted values
