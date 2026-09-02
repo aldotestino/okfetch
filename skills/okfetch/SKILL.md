@@ -219,7 +219,7 @@ await okfetch("https://api.example.com/health", {
 });
 ```
 
-When useful, mention `logDataOnSuccess` as the main option for including parsed success payloads in logs.
+When useful, mention `logDataOnSuccess` as the main option for including parsed success payloads in logs. A compatible logger with `info`, `warn`, and `error` methods can be passed as `logger`; it cannot be combined with `pinoOptions`.
 
 The logger plugin covers these lifecycle moments:
 
