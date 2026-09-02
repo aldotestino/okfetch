@@ -45,6 +45,7 @@ jobs:
       - name: Verify repository state
         run: |
           bunx tsc --noEmit
+          bun run typecheck:compat
           bun run lint
           bun run fmt:check
           bun test
