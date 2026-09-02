@@ -7,7 +7,7 @@ import { appDescription, appName, siteUrl } from '@/lib/shared';
 export const metadata: Metadata = {
   metadataBase: siteUrl,
   title: {
-    default: `${appName} — typed, composable fetch`,
+    default: appName,
     template: `%s | ${appName}`,
   },
   description: appDescription,
