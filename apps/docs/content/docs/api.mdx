@@ -77,6 +77,13 @@ export const endpoints = createEndpoints({
       },
     },
   },
+  health: {
+    check: {
+      method: "GET",
+      path: "/health",
+      output: z.object({ status: z.literal("ok") }),
+    },
+  },
 });
 ```
 
