@@ -311,6 +311,40 @@ describe("@okfetch/otel", () => {
     );
   });
 
+  test("keeps the request and span intact when the propagator throws", async () => {
+    const { fetch, requests } = createMockFetch(() =>
+      Response.json({ ok: true })
+    );
+    propagation.disable();
+    propagation.setGlobalPropagator({
+      extract: (carrierContext) => carrierContext,
+      fields: () => [],
+      inject: () => {
+        throw new Error("propagator exploded");
+      },
+    });
+
+    try {
+      const result = await okfetch("https://api.example.com/todos", {
+        fetch,
+        plugins: [otel({ tracer })],
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(requests[0]?.headers.has("traceparent")).toBe(false);
+
+      const span = getSingleSpan();
+      expect(span.status.code).toBe(SpanStatusCode.UNSET);
+      expect(span.attributes["http.response.status_code"]).toBe(200);
+      expect(span.events.map((event) => event.name)).toEqual([
+        "okfetch.propagation_failed",
+      ]);
+    } finally {
+      propagation.disable();
+      propagation.setGlobalPropagator(new W3CTraceContextPropagator());
+    }
+  });
+
   test("skips trace context injection when disabled", async () => {
     const { fetch, requests } = createMockFetch(() =>
       Response.json({ ok: true })

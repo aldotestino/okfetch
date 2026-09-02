@@ -286,16 +286,31 @@ const startSpan = (
   );
 };
 
+/**
+ * Injects trace context headers into a copy of the request headers. A
+ * propagator failure is recorded on the span and the request proceeds without
+ * propagation headers: telemetry must never fail the request or leave the
+ * span open.
+ */
 const injectTraceContext = (
   ctx: OkfetchRequestContext,
   span: Span
 ): OkfetchRequestContext => {
   const headers = new Headers(ctx.headers);
-  propagation.inject(
-    trace.setSpan(context.active(), span),
-    headers,
-    headersSetter
-  );
+
+  try {
+    propagation.inject(
+      trace.setSpan(context.active(), span),
+      headers,
+      headersSetter
+    );
+  } catch (error) {
+    span.addEvent("okfetch.propagation_failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+    return ctx;
+  }
 
   return { ...ctx, headers };
 };
