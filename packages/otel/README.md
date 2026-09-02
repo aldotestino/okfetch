@@ -48,7 +48,7 @@ Options:
 - `tracer?: Tracer` - tracer used to start spans. Defaults to `trace.getTracer("@okfetch/otel")` from the global provider.
 - `captureRequestHeaders?: boolean` - record request headers as `http.request.header.<name>` attributes. Defaults to `true`.
 - `propagateTraceContext?: boolean` - inject W3C `traceparent` / `tracestate` headers into the request. Defaults to `true`.
-- `redact?: { headers?, queryParams? }` - what to redact. Each entry is either an array of names and `RegExp` patterns that **replaces** the defaults, or a function that **receives the defaults** and returns the list to use.
+- `redact?: { headers?, queryParams?, values? }` - what to redact. `headers` and `queryParams` match names; `values` matches header and query values regardless of name. Each entry is either an array that **replaces** the defaults, or a function that **receives the defaults** and returns the list to use.
 
 ```ts
 otel({
@@ -57,6 +57,8 @@ otel({
     headers: (defaults) => [...defaults, "x-tenant", /^x-internal-/i],
     // replace the defaults entirely
     queryParams: ["customer_id"],
+    // also redact any value that looks like an internal ticket id
+    values: (defaults) => [...defaults, /^TKT-/],
   },
 });
 ```
@@ -65,11 +67,12 @@ Exports:
 
 - `DEFAULT_REDACTED_HEADERS` - `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-auth-token`, `api-key`, `x-amz-security-token`, `x-amz-credential`, `x-amz-signature`, plus `DEFAULT_REDACTED_NAME_PATTERN`
 - `DEFAULT_REDACTED_QUERY_PARAMS` - common credential parameter names such as `token`, `access_token`, `api_key`, `password`, `secret`, `signature`, the OAuth grant parameters `code`, `code_verifier`, `client_assertion`, `assertion`, the AWS SigV4 presigned-URL fields `X-Amz-Credential`, `X-Amz-Security-Token`, `X-Amz-Signature`, plus `DEFAULT_REDACTED_NAME_PATTERN`
-- `DEFAULT_REDACTED_NAME_PATTERN` - a pattern included in both default lists; any name containing `auth`, `credential`, `passw`, `secret`, `session`, `sig`, `token`, or `api-key` is redacted even when not listed explicitly. Replacing a list with an array drops it, so include it yourself if you still want it.
-- `RedactionMatcher`, `RedactionList`, `RedactionOption` - the types behind the `redact` option
+- `DEFAULT_REDACTED_NAME_PATTERN` - a pattern included in both default lists; any name containing `auth`, `bearer`, `cred`, `jwt`, `otp`, `passw`, `private`, `secret`, `session`, `sig`, `token`, or `api-key` is redacted even when not listed explicitly. Replacing a list with an array drops it, so include it yourself if you still want it.
+- `DEFAULT_REDACTED_VALUE_PATTERNS` - patterns applied to every header and query value whatever its name: JWTs (`eyJ...` with three segments) and HTTP authentication credentials (`Bearer`, `Basic`, `Digest`, `Negotiate`, `Token`, `OAuth`, `AWS4-HMAC-SHA256` prefixes)
+- `RedactionMatcher`, `RedactionList`, `RedactionOption`, `ValuePatternList`, `ValuePatternOption` - the types behind the `redact` option
 - `REDACTED_VALUE` - the `[REDACTED]` placeholder written in place of redacted values
 
-Name matching is case-insensitive for both headers and query parameters. Redaction errs on the side of hiding too much: a name such as `X-Session-Id` is redacted because it matches the default pattern.
+Name matching is case-insensitive for both headers and query parameters. Redaction errs on the side of hiding too much: a name such as `X-Session-Id` is redacted because it matches the default pattern, and a JWT sent under a harmless-looking name is redacted because of its value.
 
 ## What It Records
 

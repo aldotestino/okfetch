@@ -48,7 +48,29 @@ export type RedactionOption =
  * of both default lists.
  */
 export const DEFAULT_REDACTED_NAME_PATTERN =
-  /auth|credential|passw|secret|session|sig|token|api[-_]?key/i;
+  /auth|bearer|cred|jwt|otp|passw|private|secret|session|sig|token|api[-_]?key/i;
+
+/** A list of patterns tested against header and query parameter values. */
+export type ValuePatternList = readonly RegExp[];
+
+/**
+ * Configures value-based redaction. An array replaces the defaults; a
+ * function receives the defaults and returns the list to use.
+ */
+export type ValuePatternOption =
+  | ValuePatternList
+  | ((defaults: ValuePatternList) => ValuePatternList);
+
+/**
+ * Header and query parameter values matching one of these patterns are
+ * redacted whatever their name, so a credential carried under an arbitrary
+ * name (`X-JWT`, `blob`, ...) still never reaches telemetry. Covers JWTs and
+ * HTTP authentication credentials (`Bearer`, `Basic`, `Digest`, ...).
+ */
+export const DEFAULT_REDACTED_VALUE_PATTERNS: ValuePatternList = [
+  /^eyJ[\w-]+\.[\w-]+\.[\w-]*$/,
+  /^(?:Bearer|Basic|Digest|Negotiate|Token|OAuth|AWS4-HMAC-SHA256)\s/i,
+];
 
 /** Request headers whose values are never recorded on spans. */
 export const DEFAULT_REDACTED_HEADERS: RedactionList = [
@@ -119,6 +141,11 @@ export type OtelOptions = {
     headers?: RedactionOption;
     /** Defaults to `DEFAULT_REDACTED_QUERY_PARAMS`. */
     queryParams?: RedactionOption;
+    /**
+     * Patterns matched against header and query parameter values, applied
+     * regardless of name. Defaults to `DEFAULT_REDACTED_VALUE_PATTERNS`.
+     */
+    values?: ValuePatternOption;
   };
 };
 
@@ -130,12 +157,14 @@ type OtelState = {
 };
 
 type NameMatcher = (name: string) => boolean;
+type ValueMatcher = (value: string) => boolean;
 
 type ResolvedOptions = {
   captureRequestHeaders: boolean;
   propagateTraceContext: boolean;
   isRedactedHeader: NameMatcher;
   isRedactedQueryParam: NameMatcher;
+  isRedactedValue: ValueMatcher;
   tracer: Tracer;
 };
 
@@ -168,16 +197,29 @@ const headersSetter: TextMapSetter<Headers> = {
   },
 };
 
-const resolveRedactionList = (
-  defaults: RedactionList,
-  option: RedactionOption | undefined
-): RedactionList => {
+const resolveList = <T extends readonly unknown[]>(
+  defaults: T,
+  option: T | ((defaults: T) => T) | undefined
+): T => {
   if (option === undefined) {
     return defaults;
   }
+  if (Array.isArray(option)) {
+    return option as T;
+  }
 
-  return typeof option === "function" ? option(defaults) : option;
+  return (option as (defaults: T) => T)(defaults);
 };
+
+const testPattern = (pattern: RegExp, input: string): boolean => {
+  pattern.lastIndex = 0;
+  return pattern.test(input);
+};
+
+const createValueMatcher =
+  (patterns: ValuePatternList): ValueMatcher =>
+  (value) =>
+    patterns.some((pattern) => testPattern(pattern, value));
 
 const createNameMatcher = (list: RedactionList): NameMatcher => {
   const names = new Set<string>();
@@ -193,28 +235,25 @@ const createNameMatcher = (list: RedactionList): NameMatcher => {
 
   return (name) =>
     names.has(name.toLowerCase()) ||
-    patterns.some((pattern) => {
-      pattern.lastIndex = 0;
-      return pattern.test(name);
-    });
+    patterns.some((pattern) => testPattern(pattern, name));
 };
 
 const resolveOptions = (options: OtelOptions | undefined): ResolvedOptions => ({
   captureRequestHeaders: options?.captureRequestHeaders ?? true,
   propagateTraceContext: options?.propagateTraceContext ?? true,
   isRedactedHeader: createNameMatcher(
-    resolveRedactionList(DEFAULT_REDACTED_HEADERS, options?.redact?.headers)
+    resolveList(DEFAULT_REDACTED_HEADERS, options?.redact?.headers)
   ),
   isRedactedQueryParam: createNameMatcher(
-    resolveRedactionList(
-      DEFAULT_REDACTED_QUERY_PARAMS,
-      options?.redact?.queryParams
-    )
+    resolveList(DEFAULT_REDACTED_QUERY_PARAMS, options?.redact?.queryParams)
+  ),
+  isRedactedValue: createValueMatcher(
+    resolveList(DEFAULT_REDACTED_VALUE_PATTERNS, options?.redact?.values)
   ),
   tracer: options?.tracer ?? trace.getTracer(TRACER_NAME, PLUGIN_VERSION),
 });
 
-const redactUrl = (url: URL, isRedactedQueryParam: NameMatcher): URL => {
+const redactUrl = (url: URL, options: ResolvedOptions): URL => {
   const redacted = new URL(url.toString());
   redacted.hash = "";
 
@@ -226,7 +265,10 @@ const redactUrl = (url: URL, isRedactedQueryParam: NameMatcher): URL => {
   }
 
   for (const name of new Set(redacted.searchParams.keys())) {
-    if (isRedactedQueryParam(name)) {
+    const shouldRedact =
+      options.isRedactedQueryParam(name) ||
+      redacted.searchParams.getAll(name).some(options.isRedactedValue);
+    if (shouldRedact) {
       redacted.searchParams.set(name, REDACTED_VALUE);
     }
   }
@@ -239,7 +281,7 @@ const buildRequestAttributes = (
   template: string | undefined,
   options: ResolvedOptions
 ): Attributes => {
-  const url = redactUrl(ctx.url, options.isRedactedQueryParam);
+  const url = redactUrl(ctx.url, options);
   const attributes: Attributes = {
     "http.request.method": ctx.method,
     "server.address": url.hostname,
@@ -260,8 +302,10 @@ const buildRequestAttributes = (
 
   if (options.captureRequestHeaders) {
     for (const [name, value] of ctx.headers) {
+      const shouldRedact =
+        options.isRedactedHeader(name) || options.isRedactedValue(value);
       attributes[`http.request.header.${name}`] = [
-        options.isRedactedHeader(name) ? REDACTED_VALUE : value,
+        shouldRedact ? REDACTED_VALUE : value,
       ];
     }
   }

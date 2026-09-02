@@ -248,11 +248,11 @@ Key behavior to explain when relevant:
 
 - one `CLIENT` span per request, covering every retry attempt
 - records method, URL, path, query, and request headers; never records bodies
-- redacts sensitive headers and query parameters such as `authorization` and `token`
+- redacts sensitive headers and query parameters by name (such as `authorization` and `token`) and by value (JWTs and `Bearer`/`Basic` credentials under any name)
 - records the status code, and the status text when the request fails
 - injects `traceparent` into the outgoing request by default
 
-Main options: `tracer`, `captureRequestHeaders`, `propagateTraceContext`, and `redact` (`{ headers?, queryParams? }`, where an array replaces the default list and a function such as `(defaults) => [...defaults, "x-tenant"]` extends it).
+Main options: `tracer`, `captureRequestHeaders`, `propagateTraceContext`, and `redact` (`{ headers?, queryParams?, values? }`, where an array replaces the default list and a function such as `(defaults) => [...defaults, "x-tenant"]` extends it).
 
 ## Streaming
 

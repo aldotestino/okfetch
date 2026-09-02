@@ -28,9 +28,13 @@ import {
   DEFAULT_REDACTED_HEADERS,
   DEFAULT_REDACTED_NAME_PATTERN,
   DEFAULT_REDACTED_QUERY_PARAMS,
+  DEFAULT_REDACTED_VALUE_PATTERNS,
   otel,
   REDACTED_VALUE,
 } from "./index";
+
+const sampleJwt =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
 
 const exporter = new InMemorySpanExporter();
 const provider = new BasicTracerProvider({
@@ -489,6 +493,75 @@ describe("@okfetch/otel", () => {
     );
   });
 
+  test("redacts JWT-named fields and JWT or HTTP-auth shaped values under any name", async () => {
+    const { fetch } = createMockFetch(() => Response.json({ ok: true }));
+
+    await okfetch("https://api.example.com/todos", {
+      fetch,
+      headers: {
+        "X-Blob": sampleJwt,
+        "X-Forwarded-Credentials": "Basic dXNlcjpwYXNz",
+        "X-Jwt": "not-a-jwt-but-named-like-one",
+        "X-Plain": "plain value",
+        "X-Proxy-Header": "Bearer opaque-token-value",
+      },
+      plugins: [otel({ tracer })],
+      query: { blob: sampleJwt, jwt: "named-jwt", page: 3 },
+    });
+
+    const span = getSingleSpan();
+    const serialized = JSON.stringify(span.attributes);
+    expect(serialized).not.toContain(sampleJwt);
+    expect(serialized).not.toContain("dXNlcjpwYXNz");
+    expect(serialized).not.toContain("opaque-token-value");
+    expect(serialized).not.toContain("named-jwt");
+    expect(serialized).not.toContain("not-a-jwt-but-named-like-one");
+    expect(span.attributes).toMatchObject({
+      "http.request.header.x-blob": [REDACTED_VALUE],
+      "http.request.header.x-forwarded-credentials": [REDACTED_VALUE],
+      "http.request.header.x-jwt": [REDACTED_VALUE],
+      "http.request.header.x-plain": ["plain value"],
+      "http.request.header.x-proxy-header": [REDACTED_VALUE],
+      "url.query": `blob=${encodeURIComponent(REDACTED_VALUE)}&jwt=${encodeURIComponent(REDACTED_VALUE)}&page=3`,
+    });
+  });
+
+  test("supports replacing and extending the value patterns", async () => {
+    const { fetch } = createMockFetch(() => Response.json({ ok: true }));
+
+    await okfetch("https://api.example.com/todos", {
+      fetch,
+      headers: { "X-Blob": sampleJwt, "X-Ticket": "TKT-12345" },
+      plugins: [
+        otel({
+          redact: { values: (defaults) => [...defaults, /^TKT-/] },
+          tracer,
+        }),
+      ],
+    });
+
+    const extended = getSingleSpan();
+    expect(extended.attributes["http.request.header.x-blob"]).toEqual([
+      REDACTED_VALUE,
+    ]);
+    expect(extended.attributes["http.request.header.x-ticket"]).toEqual([
+      REDACTED_VALUE,
+    ]);
+
+    exporter.reset();
+
+    await okfetch("https://api.example.com/todos", {
+      fetch,
+      headers: { "X-Blob": sampleJwt },
+      plugins: [otel({ redact: { values: [] }, tracer })],
+    });
+
+    const replaced = getSingleSpan();
+    expect(replaced.attributes["http.request.header.x-blob"]).toEqual([
+      sampleJwt,
+    ]);
+  });
+
   test("redacts unlisted credential-like names and accepts custom patterns", async () => {
     const { fetch } = createMockFetch(() => Response.json({ ok: true }));
 
@@ -532,7 +605,7 @@ describe("@okfetch/otel", () => {
       headers: { "X-Tenant": "acme" },
       plugins: [
         otel({
-          redact: { headers: ["x-tenant"], queryParams: [] },
+          redact: { headers: ["x-tenant"], queryParams: [], values: [] },
           tracer,
         }),
       ],
@@ -683,6 +756,14 @@ describe("@okfetch/otel", () => {
       DEFAULT_REDACTED_NAME_PATTERN
     );
     expect(DEFAULT_REDACTED_NAME_PATTERN.test("X-Goog-Signature")).toBe(true);
+    expect(DEFAULT_REDACTED_NAME_PATTERN.test("X-JWT")).toBe(true);
+    expect(DEFAULT_REDACTED_NAME_PATTERN.test("X-Private-Key")).toBe(true);
+    expect(DEFAULT_REDACTED_VALUE_PATTERNS.some((p) => p.test(sampleJwt))).toBe(
+      true
+    );
+    expect(
+      DEFAULT_REDACTED_VALUE_PATTERNS.some((p) => p.test("application/json"))
+    ).toBe(false);
     expect(DEFAULT_REDACTED_NAME_PATTERN.test("content-type")).toBe(false);
   });
 });
