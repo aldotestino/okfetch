@@ -1,0 +1,6 @@
+---
+"@okfetch/fetch": patch
+"@okfetch/otel": minor
+---
+
+Add `@okfetch/otel`, an OpenTelemetry tracing plugin with configurable credential redaction, retry events, error details, and trace-context propagation. Export plugin context types from `@okfetch/fetch` and invoke `onFail` for hook and response body-read failures.
