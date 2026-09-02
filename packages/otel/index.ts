@@ -35,6 +35,9 @@ export const DEFAULT_REDACTED_HEADERS: readonly string[] = [
   "x-api-key",
   "x-auth-token",
   "api-key",
+  "x-amz-security-token",
+  "x-amz-credential",
+  "x-amz-signature",
 ];
 
 /** Query parameters whose values are never recorded on spans. */
@@ -54,8 +57,22 @@ export const DEFAULT_REDACTED_QUERY_PARAMS: readonly string[] = [
   "sig",
   "signature",
   "token",
+  "x-amz-credential",
+  "x-amz-security-token",
+  "x-amz-signature",
   "x-goog-signature",
 ];
+
+/**
+ * Header and query parameter names matching this pattern are redacted even
+ * when they are not listed explicitly, so vendor-specific credential fields
+ * such as `X-Amz-Security-Token` or `X-Goog-Signature` never leak.
+ */
+export const DEFAULT_REDACTED_NAME_PATTERN =
+  /auth|credential|passw|secret|session|sig|token|api[-_]?key/i;
+
+/** A header or query parameter name, or a pattern tested against names. */
+export type RedactionMatcher = string | RegExp;
 
 export type OtelOptions = {
   /**
@@ -74,15 +91,17 @@ export type OtelOptions = {
    */
   propagateTraceContext?: boolean;
   /**
-   * Header names redacted in addition to `DEFAULT_REDACTED_HEADERS`.
-   * Matching is case-insensitive.
+   * Header names or patterns redacted in addition to
+   * `DEFAULT_REDACTED_HEADERS` and `DEFAULT_REDACTED_NAME_PATTERN`.
+   * Name matching is case-insensitive.
    */
-  redactedHeaders?: readonly string[];
+  redactedHeaders?: readonly RedactionMatcher[];
   /**
-   * Query parameter names redacted in addition to
-   * `DEFAULT_REDACTED_QUERY_PARAMS`. Matching is case-insensitive.
+   * Query parameter names or patterns redacted in addition to
+   * `DEFAULT_REDACTED_QUERY_PARAMS` and `DEFAULT_REDACTED_NAME_PATTERN`.
+   * Name matching is case-insensitive.
    */
-  redactedQueryParams?: readonly string[];
+  redactedQueryParams?: readonly RedactionMatcher[];
 };
 
 type OtelState = {
@@ -92,11 +111,13 @@ type OtelState = {
   template?: string;
 };
 
+type NameMatcher = (name: string) => boolean;
+
 type ResolvedOptions = {
   captureRequestHeaders: boolean;
   propagateTraceContext: boolean;
-  redactedHeaders: Set<string>;
-  redactedQueryParams: Set<string>;
+  isRedactedHeader: NameMatcher;
+  isRedactedQueryParam: NameMatcher;
   tracer: Tracer;
 };
 
@@ -116,27 +137,41 @@ const headersSetter: TextMapSetter<Headers> = {
   },
 };
 
-const toLowerCaseSet = (
+const createNameMatcher = (
   defaults: readonly string[],
-  extra: readonly string[] | undefined
-): Set<string> =>
-  new Set([...defaults, ...(extra ?? [])].map((name) => name.toLowerCase()));
+  extra: readonly RedactionMatcher[] | undefined
+): NameMatcher => {
+  const names = new Set(defaults.map((name) => name.toLowerCase()));
+  const patterns = [DEFAULT_REDACTED_NAME_PATTERN];
+
+  for (const matcher of extra ?? []) {
+    if (typeof matcher === "string") {
+      names.add(matcher.toLowerCase());
+    } else {
+      patterns.push(matcher);
+    }
+  }
+
+  return (name) =>
+    names.has(name.toLowerCase()) ||
+    patterns.some((pattern) => pattern.test(name));
+};
 
 const resolveOptions = (options: OtelOptions | undefined): ResolvedOptions => ({
   captureRequestHeaders: options?.captureRequestHeaders ?? true,
   propagateTraceContext: options?.propagateTraceContext ?? true,
-  redactedHeaders: toLowerCaseSet(
+  isRedactedHeader: createNameMatcher(
     DEFAULT_REDACTED_HEADERS,
     options?.redactedHeaders
   ),
-  redactedQueryParams: toLowerCaseSet(
+  isRedactedQueryParam: createNameMatcher(
     DEFAULT_REDACTED_QUERY_PARAMS,
     options?.redactedQueryParams
   ),
   tracer: options?.tracer ?? trace.getTracer(TRACER_NAME, PLUGIN_VERSION),
 });
 
-const redactUrl = (url: URL, redactedQueryParams: Set<string>): URL => {
+const redactUrl = (url: URL, isRedactedQueryParam: NameMatcher): URL => {
   const redacted = new URL(url.toString());
 
   if (redacted.username) {
@@ -147,7 +182,7 @@ const redactUrl = (url: URL, redactedQueryParams: Set<string>): URL => {
   }
 
   for (const name of new Set(redacted.searchParams.keys())) {
-    if (redactedQueryParams.has(name.toLowerCase())) {
+    if (isRedactedQueryParam(name)) {
       redacted.searchParams.set(name, REDACTED_VALUE);
     }
   }
@@ -160,7 +195,7 @@ const buildRequestAttributes = (
   template: string | undefined,
   options: ResolvedOptions
 ): Attributes => {
-  const url = redactUrl(ctx.url, options.redactedQueryParams);
+  const url = redactUrl(ctx.url, options.isRedactedQueryParam);
   const attributes: Attributes = {
     "http.request.method": ctx.method,
     "server.address": url.hostname,
@@ -182,7 +217,7 @@ const buildRequestAttributes = (
   if (options.captureRequestHeaders) {
     for (const [name, value] of ctx.headers) {
       attributes[`http.request.header.${name}`] = [
-        options.redactedHeaders.has(name) ? REDACTED_VALUE : value,
+        options.isRedactedHeader(name) ? REDACTED_VALUE : value,
       ];
     }
   }

@@ -26,6 +26,7 @@ import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 
 import {
   DEFAULT_REDACTED_HEADERS,
+  DEFAULT_REDACTED_NAME_PATTERN,
   DEFAULT_REDACTED_QUERY_PARAMS,
   otel,
   REDACTED_VALUE,
@@ -387,6 +388,78 @@ describe("@okfetch/otel", () => {
     );
   });
 
+  test("redacts AWS SigV4 credentials in headers and presigned urls", async () => {
+    const { fetch } = createMockFetch(() => Response.json({ ok: true }));
+
+    await okfetch("https://bucket.s3.amazonaws.com/object", {
+      fetch,
+      headers: {
+        "X-Amz-Content-Sha256": "digest",
+        "X-Amz-Date": "20260902T000000Z",
+        "X-Amz-Security-Token": "session-secret",
+      },
+      plugins: [otel({ tracer })],
+      query: {
+        "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+        "X-Amz-Credential": "AKIA/20260902/us-east-1/s3/aws4_request",
+        "X-Amz-Expires": 300,
+        "X-Amz-Security-Token": "session-secret",
+        "X-Amz-Signature": "deadbeef",
+      },
+    });
+
+    const span = getSingleSpan();
+    const serialized = JSON.stringify(span.attributes);
+    expect(serialized).not.toContain("session-secret");
+    expect(serialized).not.toContain("AKIA");
+    expect(serialized).not.toContain("deadbeef");
+    expect(span.attributes["http.request.header.x-amz-security-token"]).toEqual(
+      [REDACTED_VALUE]
+    );
+    expect(span.attributes["http.request.header.x-amz-date"]).toEqual([
+      "20260902T000000Z",
+    ]);
+    expect(span.attributes["url.query"]).toContain(
+      "X-Amz-Algorithm=AWS4-HMAC-SHA256"
+    );
+    expect(span.attributes["url.query"]).toContain("X-Amz-Expires=300");
+    expect(span.attributes["url.query"]).toContain(
+      `X-Amz-Credential=${encodeURIComponent(REDACTED_VALUE)}`
+    );
+    expect(span.attributes["url.query"]).toContain(
+      `X-Amz-Signature=${encodeURIComponent(REDACTED_VALUE)}`
+    );
+  });
+
+  test("redacts unlisted credential-like names and accepts custom patterns", async () => {
+    const { fetch } = createMockFetch(() => Response.json({ ok: true }));
+
+    await okfetch("https://api.example.com/todos", {
+      fetch,
+      headers: {
+        "X-Custom-Secret": "hidden",
+        "X-Internal-Ref": "ref-1",
+        "X-Session-Id": "sess-1",
+      },
+      plugins: [otel({ redactedHeaders: [/^x-internal-/i], tracer })],
+      query: { clientSecret: "hidden", idempotencyKey: "keep", page: 1 },
+    });
+
+    const span = getSingleSpan();
+    expect(span.attributes["http.request.header.x-custom-secret"]).toEqual([
+      REDACTED_VALUE,
+    ]);
+    expect(span.attributes["http.request.header.x-session-id"]).toEqual([
+      REDACTED_VALUE,
+    ]);
+    expect(span.attributes["http.request.header.x-internal-ref"]).toEqual([
+      REDACTED_VALUE,
+    ]);
+    expect(span.attributes["url.query"]).toBe(
+      `clientSecret=${encodeURIComponent(REDACTED_VALUE)}&idempotencyKey=keep&page=1`
+    );
+  });
+
   test("redacts credentials embedded in the url", async () => {
     const { fetch } = createMockFetch(() => Response.json({ ok: true }));
 
@@ -483,6 +556,10 @@ describe("@okfetch/otel", () => {
 
   test("exposes the default redaction lists", () => {
     expect(DEFAULT_REDACTED_HEADERS).toContain("authorization");
+    expect(DEFAULT_REDACTED_HEADERS).toContain("x-amz-security-token");
     expect(DEFAULT_REDACTED_QUERY_PARAMS).toContain("token");
+    expect(DEFAULT_REDACTED_QUERY_PARAMS).toContain("x-amz-signature");
+    expect(DEFAULT_REDACTED_NAME_PATTERN.test("X-Goog-Signature")).toBe(true);
+    expect(DEFAULT_REDACTED_NAME_PATTERN.test("content-type")).toBe(false);
   });
 });

@@ -48,16 +48,17 @@ Options:
 - `tracer?: Tracer` - tracer used to start spans. Defaults to `trace.getTracer("@okfetch/otel")` from the global provider.
 - `captureRequestHeaders?: boolean` - record request headers as `http.request.header.<name>` attributes. Defaults to `true`.
 - `propagateTraceContext?: boolean` - inject W3C `traceparent` / `tracestate` headers into the request. Defaults to `true`.
-- `redactedHeaders?: string[]` - header names redacted in addition to `DEFAULT_REDACTED_HEADERS`.
-- `redactedQueryParams?: string[]` - query parameter names redacted in addition to `DEFAULT_REDACTED_QUERY_PARAMS`.
+- `redactedHeaders?: (string | RegExp)[]` - header names or patterns redacted in addition to the defaults.
+- `redactedQueryParams?: (string | RegExp)[]` - query parameter names or patterns redacted in addition to the defaults.
 
 Exports:
 
-- `DEFAULT_REDACTED_HEADERS` - `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-auth-token`, `api-key`
-- `DEFAULT_REDACTED_QUERY_PARAMS` - common credential parameter names such as `token`, `access_token`, `api_key`, `password`, `secret`, `signature`
+- `DEFAULT_REDACTED_HEADERS` - `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-auth-token`, `api-key`, `x-amz-security-token`, `x-amz-credential`, `x-amz-signature`
+- `DEFAULT_REDACTED_QUERY_PARAMS` - common credential parameter names such as `token`, `access_token`, `api_key`, `password`, `secret`, `signature`, and the AWS SigV4 presigned-URL fields `X-Amz-Credential`, `X-Amz-Security-Token`, `X-Amz-Signature`
+- `DEFAULT_REDACTED_NAME_PATTERN` - a pattern applied to every header and query parameter name; anything containing `auth`, `credential`, `passw`, `secret`, `session`, `sig`, `token`, or `api-key` is redacted even when not listed explicitly
 - `REDACTED_VALUE` - the `[REDACTED]` placeholder written in place of redacted values
 
-Matching is case-insensitive for both headers and query parameters.
+Name matching is case-insensitive for both headers and query parameters. Redaction errs on the side of hiding too much: a name such as `X-Session-Id` is redacted because it matches the default pattern.
 
 ## What It Records
 
