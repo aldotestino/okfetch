@@ -1,7 +1,16 @@
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "extends": ["./node_modules/ultracite/config/oxlint/core/.oxlintrc.json"],
-  "rules": {
+import { defineConfig } from "oxlint";
+
+export default defineConfig({
+  plugins: [
+    "eslint",
+    "typescript",
+    "unicorn",
+    "oxc",
+    "import",
+    "promise",
+    "jest",
+  ],
+  rules: {
     "max-classes-per-file": "off",
     "ban-types": "off",
     "no-empty-object-type": "off",
@@ -9,11 +18,11 @@
     "promise/avoid-new": "off",
     "no-promise-executor-return": "off",
     "func-names": "off",
-    "complexity": ["warn", 30],
+    complexity: ["warn", 30],
     "require-await": "off",
     "sort-keys": "off",
     "import/no-cycle": "off",
     "no-inline-comments": "off",
-    "consistent-type-definitions": ["error", "type"]
-  }
-}
+    "consistent-type-definitions": ["error", "type"],
+  },
+});

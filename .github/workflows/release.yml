@@ -45,7 +45,8 @@ jobs:
       - name: Verify repository state
         run: |
           bunx tsc --noEmit
-          bun check
+          bun run lint
+          bun run fmt:check
           bun test
 
       - name: Create release PR or publish to npm

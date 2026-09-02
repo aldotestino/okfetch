@@ -302,11 +302,19 @@ It demonstrates:
 Useful commands from the repo root:
 
 ```bash
-bun x ultracite fix
+bun run lint:fix
 ```
 
 ```bash
-bun x ultracite check
+bun run fmt
+```
+
+```bash
+bun run lint
+```
+
+```bash
+bun run fmt:check
 ```
 
 ```bash
