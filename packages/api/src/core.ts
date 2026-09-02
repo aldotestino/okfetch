@@ -2,14 +2,14 @@ import type { OkfetchOptions, OkfetchPlugin } from "@okfetch/fetch";
 import { ValidationError, okfetch, validateSchema } from "@okfetch/fetch";
 
 import type {
-    ApiClient,
-    ApiServiceClass,
-    CreateApiOptions,
-    EndpointCallOptions,
-    EndpointDefinition,
-    EndpointFunction,
-    EndpointRequestOverrides,
-    EndpointTree,
+  ApiClient,
+  ApiServiceClass,
+  CreateApiOptions,
+  EndpointCallOptions,
+  EndpointDefinition,
+  EndpointFunction,
+  EndpointRequestOverrides,
+  EndpointTree,
 } from "./types";
 
 const isEndpoint = (
