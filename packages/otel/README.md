@@ -96,11 +96,13 @@ Attributes follow the OpenTelemetry HTTP semantic conventions where one exists:
 | `http.response.status_text`  | Status text of the final response, on failures                               |
 | `error.type`                 | Status code for API errors, otherwise the okfetch error tag                  |
 | `okfetch.error.tag`          | okfetch error tag (`ApiError`, `FetchError`, ...)                            |
+| `okfetch.validation.issues`  | Formatted schema issues for validation failures                              |
 
 Failure handling:
 
 - `ApiError` (non-2xx): span status `ERROR` with message `{status code} {status text}`
-- `FetchError`, `TimeoutError`, `ParseError`, `ValidationError`, `PluginError`: span status `ERROR` with the error message, plus an `exception` event via `span.recordException`
+- `FetchError`, `TimeoutError`, `ParseError`, `PluginError`: span status `ERROR` with the error message, plus an `exception` event via `span.recordException`
+- `ValidationError`: the same failure details, with formatted schema issues added to the status message, exception message and `okfetch.validation.issues`
 
 Every retry adds an `okfetch.retry` event carrying the attempt number, the error tag, and the status code when a response was received.
 

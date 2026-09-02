@@ -90,7 +90,7 @@ const numericIdSchema = {
       value !== null &&
       typeof (value as { id?: unknown }).id === "number"
         ? { value }
-        : { issues: [{ message: "id must be a number" }] },
+        : { issues: [{ message: "id must be a number", path: ["id"] }] },
     vendor: "test",
     version: 1 as const,
   },
@@ -236,12 +236,20 @@ describe("@okfetch/otel", () => {
     expect(result.isErr()).toBe(true);
 
     const span = getSingleSpan();
-    expect(span.status.code).toBe(SpanStatusCode.ERROR);
+    expect(span.status).toEqual({
+      code: SpanStatusCode.ERROR,
+      message:
+        "Response body did not match output schema: id: id must be a number",
+    });
     expect(span.attributes).toMatchObject({
       "error.type": "ValidationError",
       "http.response.status_code": 200,
       "okfetch.error.tag": "ValidationError",
+      "okfetch.validation.issues": ["id: id must be a number"],
     });
+    expect(span.events[0]?.attributes?.["exception.message"]).toBe(
+      "Response body did not match output schema: id: id must be a number"
+    );
   });
 
   test("keeps a single span across retries and records each retry as an event", async () => {

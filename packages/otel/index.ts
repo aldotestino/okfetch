@@ -395,6 +395,27 @@ const recordFailure = (
     });
   }
 
+  if (error._tag === "ValidationError") {
+    const issues = error.issues.map((issue) => {
+      const path = issue.path
+        ?.map((segment) =>
+          String(typeof segment === "object" ? segment.key : segment)
+        )
+        .join(".");
+      return path ? `${path}: ${issue.message}` : issue.message;
+    });
+    const message =
+      issues.length > 0
+        ? `${error.message}: ${issues.join("; ")}`
+        : error.message;
+
+    span.setAttribute("okfetch.validation.issues", issues);
+    span.setAttribute("error.type", error._tag);
+    span.recordException({ message, name: error._tag, stack: error.stack });
+    span.setStatus({ code: SpanStatusCode.ERROR, message });
+    return;
+  }
+
   span.setAttribute("error.type", error._tag);
   span.recordException(error);
   span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
