@@ -65,10 +65,16 @@ export const runPluginInit = async (
   return Result.ok(current);
 };
 
+export type OnRequestFailure = {
+  /** The context as last returned by a hook before the failing one. */
+  context: OkfetchRequestContext;
+  error: OkfetchError<unknown>;
+};
+
 export const runOnRequest = async (
   plugins: OkfetchPlugin[],
   context: OkfetchRequestContext
-): Promise<Result<OkfetchRequestContext, OkfetchError<unknown>>> => {
+): Promise<Result<OkfetchRequestContext, OnRequestFailure>> => {
   let current = context;
 
   for (const plugin of plugins) {
@@ -82,7 +88,10 @@ export const runOnRequest = async (
         current = next;
       }
     } catch (error) {
-      return Result.err(wrapPluginError(error, plugin.name, "onRequest"));
+      return Result.err({
+        context: current,
+        error: wrapPluginError(error, plugin.name, "onRequest"),
+      });
     }
   }
 

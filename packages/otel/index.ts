@@ -143,7 +143,20 @@ const getState = (
   carrier: OkfetchRequestContext | OkfetchOptions
 ): OtelState | undefined => (carrier as WithState<typeof carrier>)[stateKey];
 
-const pathParamPattern = /:[A-Za-z_]\w*(?=[/?]|$)/;
+const pathParamPattern = /:[A-Za-z_]\w*(?=[/?#]|$)/;
+const userInfoPattern = /^([a-z][a-z\d+.-]*:\/\/)[^/]*@/i;
+
+/**
+ * Reduces a raw request url to its low-cardinality template: the query,
+ * fragment and any embedded credentials are dropped so only the scheme, host
+ * and path with `:param` placeholders remain.
+ */
+const toTemplate = (rawUrl: string): string | undefined => {
+  const [withoutQuery = ""] = rawUrl.split(/[?#]/, 1);
+  const template = withoutQuery.replace(userInfoPattern, "$1");
+
+  return pathParamPattern.test(template) ? template : undefined;
+};
 
 const headersSetter: TextMapSetter<Headers> = {
   set: (carrier, key, value) => {
@@ -199,6 +212,7 @@ const resolveOptions = (options: OtelOptions | undefined): ResolvedOptions => ({
 
 const redactUrl = (url: URL, isRedactedQueryParam: NameMatcher): URL => {
   const redacted = new URL(url.toString());
+  redacted.hash = "";
 
   if (redacted.username) {
     redacted.username = REDACTED_VALUE;
@@ -339,12 +353,11 @@ export const otel = (options?: OtelOptions): OkfetchPlugin => {
     options: requestOptions,
     url,
   }: OkfetchPluginInitInput): OkfetchPluginInitInput => {
-    const hasTemplate =
-      requestOptions.params !== undefined && pathParamPattern.test(url);
     const state: OtelState = {
       ended: false,
       resendCount: 0,
-      template: hasTemplate ? url : undefined,
+      template:
+        requestOptions.params === undefined ? undefined : toTemplate(url),
     };
     const nextOptions: WithState<OkfetchOptions> = {
       ...requestOptions,

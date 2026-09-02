@@ -493,6 +493,36 @@ describe("@okfetch/otel", () => {
     expect(span.attributes["url.query"]).toBe("token=visible-query");
   });
 
+  test("drops fragments and template query values from recorded urls", async () => {
+    const { fetch } = createMockFetch(() => Response.json({ ok: true }));
+
+    await okfetch(
+      "https://user:pass@api.example.com/todos/:id?token=template-secret#access_token=fragment-secret",
+      {
+        fetch,
+        params: { id: 7 },
+        plugins: [otel({ tracer })],
+        query: { page: 1 },
+      }
+    );
+
+    const span = getSingleSpan();
+    const serialized = JSON.stringify({ name: span.name, ...span.attributes });
+    expect(serialized).not.toContain("template-secret");
+    expect(serialized).not.toContain("fragment-secret");
+    expect(serialized).not.toContain("pass");
+    expect(span.name).toBe("GET https://api.example.com/todos/:id");
+    expect(span.attributes["url.template"]).toBe(
+      "https://api.example.com/todos/:id"
+    );
+    expect(span.attributes["url.full"]).toBe(
+      `https://${encodeURIComponent(REDACTED_VALUE)}:${encodeURIComponent(REDACTED_VALUE)}@api.example.com/todos/7?token=${encodeURIComponent(REDACTED_VALUE)}&page=1`
+    );
+    expect(span.attributes["url.query"]).toBe(
+      `token=${encodeURIComponent(REDACTED_VALUE)}&page=1`
+    );
+  });
+
   test("redacts credentials embedded in the url", async () => {
     const { fetch } = createMockFetch(() => Response.json({ ok: true }));
 

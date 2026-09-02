@@ -6,7 +6,12 @@ import type { Result } from "better-result";
 import { z } from "zod/v4";
 
 import { ValidationError } from "./errors";
-import type { OkfetchError, OkfetchFetch, OkfetchPlugin } from "./index";
+import type {
+  OkfetchError,
+  OkfetchFetch,
+  OkfetchPlugin,
+  OkfetchRequestContext,
+} from "./index";
 import { okfetch, validateSchema } from "./index";
 import { validateAllErrors, validateClientErrors } from "./presets";
 import { buildRequestContext } from "./request-context";
@@ -1406,6 +1411,43 @@ describe("okfetch edge cases", () => {
         pluginName: "broken-response",
       });
     }
+  });
+
+  test("onFail receives the context produced before a later onRequest hook throws", async () => {
+    let failContext: OkfetchRequestContext | undefined;
+    const stateful: OkfetchPlugin = {
+      name: "stateful",
+      version: "1.0.0",
+      hooks: {
+        onRequest: (context) => {
+          const headers = new Headers(context.headers);
+          headers.set("x-stateful", "attached");
+          return { ...context, headers };
+        },
+        onFail: (context) => {
+          failContext = context;
+        },
+      },
+    };
+
+    const result = await okfetch("https://example.com", {
+      fetch: createMockFetch(() => Response.json({ ok: true })),
+      plugins: [
+        stateful,
+        {
+          name: "broken-request",
+          version: "1.0.0",
+          hooks: {
+            onRequest: () => {
+              throw new Error("boom");
+            },
+          },
+        },
+      ],
+    });
+
+    expect(result.isErr()).toBe(true);
+    expect(failContext?.headers.get("x-stateful")).toBe("attached");
   });
 
   test("onFail fires when mutating hooks or the body read fail", async () => {

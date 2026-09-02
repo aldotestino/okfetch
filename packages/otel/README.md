@@ -77,22 +77,22 @@ Span name: `{method}`, or `{method} {path template}` when the request uses `para
 
 Attributes follow the OpenTelemetry HTTP semantic conventions where one exists:
 
-| Attribute                    | Value                                                       |
-| ---------------------------- | ----------------------------------------------------------- |
-| `http.request.method`        | Request method                                              |
-| `url.full`                   | Full URL with redacted query parameters and credentials     |
-| `url.scheme`                 | URL scheme                                                  |
-| `url.path`                   | URL path                                                    |
-| `url.query`                  | Query string with redacted parameters (omitted when empty)  |
-| `url.template`               | Path template when `params` are used                        |
-| `server.address`             | Hostname                                                    |
-| `server.port`                | Port when explicitly present in the URL                     |
-| `http.request.header.<name>` | Request header values, redacted for sensitive headers       |
-| `http.request.resend_count`  | Number of retries performed                                 |
-| `http.response.status_code`  | Status code of the final response                           |
-| `http.response.status_text`  | Status text of the final response, on failures              |
-| `error.type`                 | Status code for API errors, otherwise the okfetch error tag |
-| `okfetch.error.tag`          | okfetch error tag (`ApiError`, `FetchError`, ...)           |
+| Attribute                    | Value                                                                        |
+| ---------------------------- | ---------------------------------------------------------------------------- |
+| `http.request.method`        | Request method                                                               |
+| `url.full`                   | Full URL with redacted query parameters and credentials, fragment dropped    |
+| `url.scheme`                 | URL scheme                                                                   |
+| `url.path`                   | URL path                                                                     |
+| `url.query`                  | Query string with redacted parameters (omitted when empty)                   |
+| `url.template`               | Path template when `params` are used, without query, fragment or credentials |
+| `server.address`             | Hostname                                                                     |
+| `server.port`                | Port when explicitly present in the URL                                      |
+| `http.request.header.<name>` | Request header values, redacted for sensitive headers                        |
+| `http.request.resend_count`  | Number of retries performed                                                  |
+| `http.response.status_code`  | Status code of the final response                                            |
+| `http.response.status_text`  | Status text of the final response, on failures                               |
+| `error.type`                 | Status code for API errors, otherwise the okfetch error tag                  |
+| `okfetch.error.tag`          | okfetch error tag (`ApiError`, `FetchError`, ...)                            |
 
 Failure handling:
 

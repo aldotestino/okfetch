@@ -256,11 +256,14 @@ const executeAttempt = async <TRes, TErr, Options extends OkfetchOptions>(
 ): Promise<AttemptResult<TRes, TErr, Options>> => {
   const requestResult = await runOnRequest(plugins, { ...state.context });
   if (requestResult.isErr()) {
+    // Hand onFail the context produced by the hooks that ran before the
+    // failing one, so stateful plugins can find what they attached to it.
+    state.context = requestResult.error.context;
     return failRequest(
       plugins,
       state.context,
       undefined,
-      requestResult.error as OkfetchError<TErr>
+      requestResult.error.error as OkfetchError<TErr>
     );
   }
 
