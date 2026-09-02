@@ -2,9 +2,9 @@
   "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
   "access": "public",
   "baseBranch": "main",
-  "changelog": false,
+  "changelog": "@changesets/cli/changelog",
   "commit": false,
-  "fixed": [],
+  "fixed": [["@okfetch/api", "@okfetch/fetch", "@okfetch/logger"]],
   "ignore": ["@okfetch/app"],
   "linked": [],
   "updateInternalDependencies": "patch"

@@ -1,23 +1,29 @@
 # Changesets
 
-Use Changesets to manage version bumps for the publishable packages in this repo.
+Use Changesets to record release intent for the publishable packages in this
+repository.
 
-## Create a release note
+## Create A Changeset
 
 ```bash
 bun run changeset
 ```
 
-This will create a markdown file in `.changeset/` describing which packages changed and what version bump they need.
+Select the changed package and its release level, then commit the generated
+`.changeset/*.md` file with the code change. The publishable packages are a fixed
+group, so Changesets applies the highest selected release level to all of them
+and keeps their versions aligned.
 
-## Apply version bumps locally
+Do not run `bun run version-packages` as part of the normal contribution flow.
+That command consumes pending changesets and is run by the release workflow.
 
-```bash
-bun run version-packages
-```
+## Release
 
-This updates package versions, internal dependency ranges, and the lockfile.
+After a changeset reaches `main`, `.github/workflows/release.yml` creates or
+updates a release PR. That PR contains package version updates, package
+changelogs, internal dependency updates, the lockfile update, and deletion of
+the consumed changeset files.
 
-## Publish
-
-Publishing is handled by `.github/workflows/release.yml` through npm trusted publishing.
+Merging the release PR publishes through npm trusted publishing. Changesets
+then creates a package-specific Git tag and GitHub Release for every published
+package.
