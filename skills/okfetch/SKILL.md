@@ -125,7 +125,7 @@ Endpoint definitions may include:
 - `requestOptions`
 - `stream`
 
-This package validates `body`, `params`, and `query` before sending the request, then delegates transport behavior to `@okfetch/fetch`.
+This package validates `body`, `params`, and `query` before sending the request, then delegates transport behavior to `@okfetch/fetch`. Input validation failures run plugin `onFail` hooks without sending a network request, so logger and tracing plugins observe them.
 
 Prefer this shape in examples:
 

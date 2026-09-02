@@ -150,6 +150,8 @@ By default, `@okfetch/api` validates:
 
 before the network call is sent.
 
+Input validation failures are returned as `ValidationError` and passed to plugin `onFail` hooks. The network call is not sent, while logging and tracing plugins can still observe the failure.
+
 It delegates response parsing, retries, streaming, auth, plugins, and error handling to `@okfetch/fetch`.
 
 Useful options:
