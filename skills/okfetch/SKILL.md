@@ -30,6 +30,8 @@ The main usage pattern is:
 2. Call `okfetch(...)` directly or generate a client with `createApi(...)`.
 3. Handle the returned `Result` explicitly instead of relying on thrown request errors.
 
+The packages do not require consumers to install a specific TypeScript compiler. Published declarations are tested with TypeScript 5.4 and newer.
+
 ## Result handling
 
 Request calls return a `Result`, not thrown transport or validation errors for expected failures.
@@ -253,6 +255,12 @@ Key behavior to explain when relevant:
 - injects `traceparent` into the outgoing request by default
 
 Main options: `tracer`, `captureRequestHeaders`, `propagateTraceContext`, and `redact` (`{ headers?, queryParams?, values? }`, where an array replaces the default list and a function such as `(defaults) => [...defaults, "x-tenant"]` extends it).
+
+## Plugin authoring
+
+Use the public `OkfetchPlugin`, `OkfetchPluginInitInput`, and `OkfetchRequestContext` types from `@okfetch/fetch` when writing a custom plugin.
+
+Lifecycle hooks are `init`, `onRequest`, `onResponse`, `onSuccess`, `onFail`, and `onRetry`. `onFail` runs for every failure after the request context exists, including transport, timeout, API, parse, validation, `onRequest`, `onResponse`, and response body-read failures. It does not run for `init` failures. If an `onRequest` hook fails, `onFail` receives the context last returned by the preceding hook.
 
 ## Streaming
 

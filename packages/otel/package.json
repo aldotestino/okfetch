@@ -49,7 +49,6 @@
   },
   "peerDependencies": {
     "@okfetch/fetch": "^0.4.0",
-    "@opentelemetry/api": "^1.9.0",
-    "typescript": "^5"
+    "@opentelemetry/api": "^1.9.0"
   }
 }

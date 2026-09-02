@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -26,8 +26,14 @@ jobs:
       - name: Type check
         run: bun typecheck
 
+      - name: Check TypeScript 5.4 declarations
+        run: bun run typecheck:compat
+
       - name: Lint
-        run: bun check
+        run: bun run lint
+
+      - name: Check formatting
+        run: bun run fmt:check
 
       - name: Run tests with coverage
         run: bun test --coverage
