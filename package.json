@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
+    "typecheck:compat": "bun run build && bunx --package typescript@5.4.5 tsc --project tests/typescript-compat/tsconfig.json",
     "build:watch": "tsdown --watch",
     "changeset": "changeset",
     "lint": "oxlint",
@@ -26,9 +27,8 @@
     "husky": "^9.1.7",
     "oxfmt": "^0.66.0",
     "oxlint": "^1.81.0",
-    "tsdown": "0.22.14"
-  },
-  "peerDependencies": {
-    "typescript": "^5.9.3"
+    "oxlint-tsgolint": "7.0.2001",
+    "tsdown": "0.22.14",
+    "typescript": "7.0.2"
   }
 }

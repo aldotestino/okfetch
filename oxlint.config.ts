@@ -11,6 +11,10 @@ export default defineConfig({
     "promise",
     "jest",
   ],
+  options: {
+    typeAware: true,
+    typeCheck: true,
+  },
   rules: {
     "max-classes-per-file": "off",
     "ban-types": "off",

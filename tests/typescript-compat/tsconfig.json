@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "lib": ["DOM", "ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "paths": {
+      "@okfetch/api": ["../../packages/api/dist/index.d.mts"],
+      "@okfetch/fetch": ["../../packages/fetch/dist/index.d.mts"],
+      "@okfetch/logger": ["../../packages/logger/dist/index.d.mts"]
+    },
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": []
+  },
+  "include": ["index.ts"]
+}

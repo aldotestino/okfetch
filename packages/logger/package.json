@@ -46,7 +46,6 @@
   },
   "peerDependencies": {
     "@okfetch/fetch": "^0.4.1",
-    "pino": "^10.3.1",
-    "typescript": "^5"
+    "pino": "^10.3.1"
   }
 }
