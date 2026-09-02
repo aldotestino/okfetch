@@ -45,15 +45,16 @@ jobs:
       - name: Verify repository state
         run: |
           bunx tsc --noEmit
-          bun check
+          bun run lint
+          bun run fmt:check
           bun test
 
       - name: Create release PR or publish to npm
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
-          version: bun run version-packages
-          publish: bun run release
-          commit: "chore: version packages"
-          title: "chore: version packages"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version-script: bun run version-packages
+          publish-script: bun run release
+          commit-message: "chore: version packages"
+          pr-title: "chore: version packages"
+          create-github-releases: true

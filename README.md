@@ -68,6 +68,9 @@ bun add @okfetch/logger @okfetch/fetch pino
 npm install @okfetch/logger @okfetch/fetch pino
 ```
 
+The packages do not install or require a specific TypeScript compiler. Their
+published declarations are tested with TypeScript 5.4 and newer.
+
 ## Quick Start
 
 ### 1. Direct requests with `@okfetch/fetch`
@@ -302,11 +305,19 @@ It demonstrates:
 Useful commands from the repo root:
 
 ```bash
-bun x ultracite fix
+bun run lint:fix
 ```
 
 ```bash
-bun x ultracite check
+bun run fmt
+```
+
+```bash
+bun run lint
+```
+
+```bash
+bun run fmt:check
 ```
 
 ```bash

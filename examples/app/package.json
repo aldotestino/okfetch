@@ -16,8 +16,5 @@
   },
   "devDependencies": {
     "@types/bun": "1.4.0"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
   }
 }

@@ -46,7 +46,6 @@
     "zod": "^4.5.4"
   },
   "peerDependencies": {
-    "better-result": "^3.0.1",
-    "typescript": "^5"
+    "better-result": "^3.0.1"
   }
 }

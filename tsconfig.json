@@ -2,7 +2,7 @@
   "exclude": ["**/dist/**", "node_modules"],
   "compilerOptions": {
     // Environment setup & latest features
-    "lib": ["ESNext"],
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
@@ -11,7 +11,6 @@
 
     // Bundler mode
     "moduleResolution": "bundler",
-    "baseUrl": ".",
     "paths": {
       "@okfetch/api": ["./packages/api/src/index.ts"],
       "@okfetch/fetch": ["./packages/fetch/src/index.ts"],
@@ -20,6 +19,7 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
+    "types": ["bun"],
 
     // Best practices
     "strict": true,

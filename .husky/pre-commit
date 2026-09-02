@@ -1,6 +1,6 @@
 bun test
 
-# ultracite
+# Oxlint and Oxfmt
 #!/bin/sh
 # Exit on any error
 set -e
@@ -13,7 +13,8 @@ if [ -z "$STAGED_FILES" ]; then
 fi
 
 # Run formatter
-bun x ultracite fix
+bun run lint:fix
+bun run fmt
 FORMAT_EXIT_CODE=$?
 
 # Re-stage files that were already staged
@@ -24,8 +25,8 @@ echo "$STAGED_FILES" | while IFS= read -r file; do
 done
 
 if [ $FORMAT_EXIT_CODE -ne 0 ]; then
-  echo "Ultracite found issues that could not be auto-fixed."
+  echo "Oxlint or Oxfmt found issues that could not be auto-fixed."
   exit $FORMAT_EXIT_CODE
 fi
 
-echo "✨ Files formatted by Ultracite"
+echo "✨ Files checked by Oxlint and formatted by Oxfmt"
