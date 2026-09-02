@@ -11,6 +11,7 @@ The repo is split into focused packages:
 - `@okfetch/fetch` for direct typed requests with validation, retries, plugins, timeouts, auth, and streaming
 - `@okfetch/api` for schema-defined endpoint trees that generate a typed API client
 - `@okfetch/logger` for a ready-made `pino` plugin you can drop into request flows
+- `@okfetch/otel` for an OpenTelemetry plugin that traces every request as a single span
 
 All request execution is based on [`better-result`](https://github.com/dmmulroy/better-result), so success and failure stay explicit as data instead of being pushed into exception-based control flow.
 
@@ -21,12 +22,14 @@ All request execution is based on [`better-result`](https://github.com/dmmulroy/
 | `@okfetch/fetch`  | Direct `fetch` wrapper with runtime validation and lifecycle hooks | Low-level requests and shared transport config           |
 | `@okfetch/api`    | Typed API client generated from endpoint definitions               | Larger applications with repeated API calls              |
 | `@okfetch/logger` | `pino`-based plugin for okfetch hooks                              | Request/response logging without writing your own plugin |
+| `@okfetch/otel`   | OpenTelemetry tracing plugin for okfetch hooks                     | One redacted client span per request, including retries  |
 
 Package-level docs:
 
 - [packages/fetch/README.md](https://github.com/aldotestino/okfetch/blob/main/packages/fetch/README.md)
 - [packages/api/README.md](https://github.com/aldotestino/okfetch/blob/main/packages/api/README.md)
 - [packages/logger/README.md](https://github.com/aldotestino/okfetch/blob/main/packages/logger/README.md)
+- [packages/otel/README.md](https://github.com/aldotestino/okfetch/blob/main/packages/otel/README.md)
 
 ## Why okfetch
 
@@ -66,6 +69,16 @@ bun add @okfetch/logger @okfetch/fetch pino
 
 ```bash
 npm install @okfetch/logger @okfetch/fetch pino
+```
+
+### Tracing plugin
+
+```bash
+bun add @okfetch/otel @okfetch/fetch @opentelemetry/api
+```
+
+```bash
+npm install @okfetch/otel @okfetch/fetch @opentelemetry/api
 ```
 
 ## Quick Start
@@ -145,13 +158,27 @@ const result = await okfetch("https://example.com/health", {
 });
 ```
 
+### 4. Tracing with `@okfetch/otel`
+
+```ts
+import { okfetch } from "@okfetch/fetch";
+import { otel } from "@okfetch/otel";
+
+const result = await okfetch("https://example.com/todos/:id", {
+  params: { id: 1 },
+  plugins: [otel()],
+});
+```
+
+Each request becomes a single OpenTelemetry client span with the method, URL, query, and headers recorded (sensitive values redacted, bodies never captured), plus the status code and text on failure.
+
 ## How The Packages Fit Together
 
 `@okfetch/fetch` is the transport core. It owns request execution, retries, streaming support, auth, plugin execution, timeout behavior, and parsing.
 
 `@okfetch/api` sits on top of `@okfetch/fetch`. It turns endpoint definitions into typed client methods and injects request validation based on the schemas attached to each endpoint.
 
-`@okfetch/logger` is optional sugar. It is just a plugin package built on the public `OkfetchPlugin` interface from `@okfetch/fetch`.
+`@okfetch/logger` and `@okfetch/otel` are optional sugar. They are just plugin packages built on the public `OkfetchPlugin` interface from `@okfetch/fetch`.
 
 ## Core Concepts
 

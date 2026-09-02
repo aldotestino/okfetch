@@ -3,7 +3,7 @@ import { defineConfig } from "tsdown";
 const sharedConfig = defineConfig({
   clean: true,
   deps: {
-    neverBundle: [/^@okfetch\//, "better-result", "pino"],
+    neverBundle: [/^@okfetch\//, /^@opentelemetry\//, "better-result", "pino"],
   },
   dts: true,
   format: ["esm", "cjs"],
@@ -25,5 +25,10 @@ export default defineConfig([
     ...sharedConfig,
     entry: ["packages/logger/index.ts"],
     outDir: "packages/logger/dist",
+  },
+  {
+    ...sharedConfig,
+    entry: ["packages/otel/index.ts"],
+    outDir: "packages/otel/dist",
   },
 ]);

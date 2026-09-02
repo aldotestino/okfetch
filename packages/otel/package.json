@@ -1,0 +1,55 @@
+{
+  "name": "@okfetch/otel",
+  "version": "0.1.0",
+  "description": "An OpenTelemetry tracing plugin for okfetch request lifecycles.",
+  "keywords": [
+    "fetch",
+    "opentelemetry",
+    "otel",
+    "plugin",
+    "tracing",
+    "typescript"
+  ],
+  "homepage": "https://github.com/aldotestino/okfetch#readme",
+  "bugs": {
+    "url": "https://github.com/aldotestino/okfetch/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aldotestino/okfetch.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@okfetch/fetch": "^0.4.0",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/context-async-hooks": "^2.0.0",
+    "@opentelemetry/core": "^2.0.0",
+    "@opentelemetry/sdk-trace-base": "^2.0.0",
+    "@types/bun": "latest",
+    "better-result": "^3.0.1"
+  },
+  "peerDependencies": {
+    "@okfetch/fetch": "^0.4.0",
+    "@opentelemetry/api": "^1.9.0",
+    "typescript": "^5"
+  }
+}

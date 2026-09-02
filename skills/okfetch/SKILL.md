@@ -1,6 +1,6 @@
 ---
 name: okfetch
-description: Use this skill when building with the okfetch library. It helps agents choose between @okfetch/fetch, @okfetch/api, and @okfetch/logger, and shows the expected Result-based and Zod-based usage patterns.
+description: Use this skill when building with the okfetch library. It helps agents choose between @okfetch/fetch, @okfetch/api, @okfetch/logger, and @okfetch/otel, and shows the expected Result-based and Zod-based usage patterns.
 ---
 
 # okfetch
@@ -14,6 +14,7 @@ Choose the package based on the job:
 - Use `@okfetch/fetch` for direct typed requests with validation, retries, plugins, auth, timeouts, and streaming.
 - Use `@okfetch/api` when the user wants a typed client generated from endpoint definitions.
 - Use `@okfetch/logger` when the user wants ready-made request logging through a plugin.
+- Use `@okfetch/otel` when the user wants OpenTelemetry tracing of requests through a plugin.
 
 If the user has repeated endpoint calls, shared request shapes, or wants one typed client object, prefer `@okfetch/api`.
 
@@ -226,6 +227,32 @@ The logger plugin covers these lifecycle moments:
 - success
 - failure
 - retry
+
+## `@okfetch/otel`
+
+Use `otel()` from `@okfetch/otel` as a plugin for OpenTelemetry tracing. It requires `@opentelemetry/api` and an OpenTelemetry SDK registered as the global tracer provider.
+
+Prefer this shape in examples:
+
+```ts
+import { okfetch } from "@okfetch/fetch";
+import { otel } from "@okfetch/otel";
+
+await okfetch("https://api.example.com/todos/:id", {
+  params: { id: 1 },
+  plugins: [otel()],
+});
+```
+
+Key behavior to explain when relevant:
+
+- one `CLIENT` span per request, covering every retry attempt
+- records method, URL, path, query, and request headers; never records bodies
+- redacts sensitive headers and query parameters such as `authorization` and `token`
+- records the status code, and the status text when the request fails
+- injects `traceparent` into the outgoing request by default
+
+Main options: `tracer`, `captureRequestHeaders`, `propagateTraceContext`, `redactedHeaders`, `redactedQueryParams`.
 
 ## Streaming
 

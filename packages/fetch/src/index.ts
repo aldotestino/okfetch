@@ -13,6 +13,8 @@ export type {
   OkfetchOptions,
   OkfetchPlugin,
   OkfetchPluginHooks,
+  OkfetchPluginInitInput,
+  OkfetchRequestContext,
   OkfetchSuccess,
   Method,
   RetryOptions,
