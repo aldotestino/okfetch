@@ -1,0 +1,12 @@
+{
+  "title": "Documentation",
+  "root": true,
+  "pages": [
+    "index",
+    "---Packages---",
+    "fetch",
+    "api",
+    "logger",
+    "otel"
+  ]
+}

@@ -1,0 +1,362 @@
+---
+title: '@okfetch/fetch'
+description: The transport core — typed results, schema validation, retries, timeouts, auth, streaming, and the plugin lifecycle.
+icon: Zap
+---
+
+`@okfetch/fetch` is the only package in the family that touches the network. Everything else
+either composes it or plugs into it.
+
+Reach for it directly when you have a handful of requests, need full control over each one,
+or are building your own abstraction on top.
+
+<Tabs items={["bun", "npm", "pnpm"]}>
+  <Tab value="bun">
+
+```bash
+bun add @okfetch/fetch better-result
+```
+
+  </Tab>
+  <Tab value="npm">
+
+```bash
+npm install @okfetch/fetch better-result
+```
+
+  </Tab>
+  <Tab value="pnpm">
+
+```bash
+pnpm add @okfetch/fetch better-result
+```
+
+  </Tab>
+</Tabs>
+
+## Building the URL
+
+You can pass a fully qualified URL, or combine `baseURL` with a path. Path params come from
+`params`, the query string from `query`.
+
+```ts
+await okfetch("/repos/:owner/:repo/issues", {
+  baseURL: "https://api.github.com",
+  params: { owner: "aldotestino", repo: "okfetch" },
+  query: { state: "open", labels: ["bug", "help wanted"], page: 1 },
+});
+// -> https://api.github.com/repos/aldotestino/okfetch/issues
+//      ?state=open&labels=bug&labels=help+wanted&page=1
+```
+
+Note that `labels` repeated the key rather than joining with commas — see the
+[serialization rules](/docs#serialization-rules).
+
+## Validating responses
+
+### Success payloads
+
+`outputSchema` runs against the parsed success body. If it fails, you get a `ValidationError`
+with `type: "output"` instead of a wrongly-typed object.
+
+```ts
+const result = await okfetch("/me", {
+  baseURL,
+  outputSchema: z.object({
+    id: z.string(),
+    email: z.email(),
+    plan: z.enum(["free", "pro", "enterprise"]),
+  }),
+});
+```
+
+Set `validateOutput: false` to keep the inferred type while skipping the runtime check —
+useful in hot paths where you already trust the source.
+
+### Error payloads
+
+Most APIs return structured errors. Describe them with `apiErrorDataSchema` and they land,
+typed, on `ApiError.data`.
+
+```ts
+const result = await okfetch("/payments", {
+  baseURL,
+  method: "POST",
+  body: { amount: 4200, currency: "eur" },
+  apiErrorDataSchema: z.object({
+    code: z.enum(["card_declined", "insufficient_funds"]),
+    message: z.string(),
+  }),
+});
+
+if (result.isErr() && result.error._tag === "ApiError") {
+  // result.error.data.code is a union, not `any`
+  if (result.error.data?.code === "card_declined") {
+    await promptForAnotherCard();
+  }
+}
+```
+
+A gateway returning HTML on a 502 should not turn into a validation failure. Narrow *which*
+statuses get validated with `shouldValidateError`:
+
+```ts
+import { validateAllErrors, validateClientErrors } from "@okfetch/fetch";
+
+await okfetch("/payments", {
+  baseURL,
+  apiErrorDataSchema: paymentErrorSchema,
+  shouldValidateError: validateClientErrors, // 4xx only
+  // validateAllErrors covers 4xx and 5xx; or pass your own (status) => boolean
+});
+```
+
+<Callout title="Excluded statuses are still parsed">
+  A status that `shouldValidateError` skips still gets its JSON body attached to
+  `ApiError.data` — the schema just types it without checking it. And when validation *does*
+  run and fails, the raw parsed body is kept on `data` rather than dropped.
+</Callout>
+
+## Retries
+
+Three strategies, all configurable per request or shared through a wrapper.
+
+<Tabs items={["exponential", "linear", "fixed"]}>
+  <Tab value="exponential">
+
+```ts
+await okfetch("/reports/nightly", {
+  baseURL,
+  retry: {
+    strategy: "exponential",
+    attempts: 5,
+    initialDelay: 200, // 200, 400, 800, 1600, 3200 ms
+    factor: 2,
+    maxDelay: 5_000,
+  },
+});
+```
+
+  </Tab>
+  <Tab value="linear">
+
+```ts
+await okfetch("/reports/nightly", {
+  baseURL,
+  retry: {
+    strategy: "linear",
+    attempts: 4,
+    initialDelay: 250, // 250, 500, 750, 1000 ms
+    step: 250,
+  },
+});
+```
+
+  </Tab>
+  <Tab value="fixed">
+
+```ts
+await okfetch("/reports/nightly", {
+  baseURL,
+  retry: { strategy: "fixed", attempts: 3, delay: 1_000 },
+});
+```
+
+  </Tab>
+</Tabs>
+
+By default okfetch retries `FetchError`, `TimeoutError`, and `ApiError` with status ≥ 500.
+Override that with `shouldRetry` — for example to respect a rate limit but give up on
+anything else:
+
+```ts
+await okfetch("/search", {
+  baseURL,
+  retry: {
+    strategy: "exponential",
+    attempts: 3,
+    shouldRetry: (error) =>
+      error._tag === "ApiError" ? error.statusCode === 429 : true,
+  },
+});
+```
+
+## Timeouts
+
+`timeout` is milliseconds, and it covers each attempt. A timeout produces a `TimeoutError`,
+which is retryable by default.
+
+```ts
+await okfetch("/slow-report", { baseURL, timeout: 3_000 });
+```
+
+You can still pass your own `signal` — user-initiated cancellation and the timeout coexist.
+
+## Auth
+
+Three shapes, all of which set the `Authorization` header for you.
+
+```ts
+// Bearer
+await okfetch("/me", { baseURL, auth: { type: "bearer", token } });
+
+// Basic
+await okfetch("/me", {
+  baseURL,
+  auth: { type: "basic", username: "svc", password: process.env.SVC_PASSWORD! },
+});
+
+// Anything else: prefix + value
+await okfetch("/me", {
+  baseURL,
+  auth: { type: "custom", prefix: "Token", value: apiKey },
+});
+```
+
+For a token that must be refreshed, an `init` plugin hook is a better home than a per-call
+option — see below.
+
+## Plugins
+
+A plugin is an object with a name, a version, an optional `init`, and up to five lifecycle
+hooks. `onRequest` and `onResponse` can *rewrite* what flows through them by returning a new
+value; returning nothing leaves the value untouched.
+
+```ts
+import type { OkfetchPlugin } from "@okfetch/fetch";
+
+const requestId = (): OkfetchPlugin => ({
+  name: "request-id",
+  version: "1.0.0",
+  hooks: {
+    onRequest(context) {
+      context.headers.set("x-request-id", crypto.randomUUID());
+      return context;
+    },
+  },
+});
+```
+
+A token-refresh plugin, using `init` to rewrite the options before a request context exists:
+
+```ts
+const withFreshToken = (getToken: () => Promise<string>): OkfetchPlugin => ({
+  name: "auth-refresh",
+  version: "1.0.0",
+  async init({ url, options }) {
+    return {
+      url,
+      options: { ...options, auth: { type: "bearer", token: await getToken() } },
+    };
+  },
+});
+```
+
+### The lifecycle
+
+| Hook         | Signature                                     | Runs                                             |
+| ------------ | --------------------------------------------- | ------------------------------------------------ |
+| `init`       | `({ url, options })`                          | once, before the request context is built        |
+| `onRequest`  | `(context)`                                   | before every attempt, including retries          |
+| `onResponse` | `(context, response)`                         | after every response, before parsing             |
+| `onSuccess`  | `(context, response, data)`                   | after a validated success                        |
+| `onFail`     | `(context, response?, error)`                 | on any failure once a context exists             |
+| `onRetry`    | `(context, response?, error, attempt)`        | between attempts                                 |
+
+<Callout type="warn" title="init failures skip onFail">
+  `onFail` covers transport, timeout, API, parse, and validation errors, plus anything thrown
+  by `onRequest`/`onResponse` and failures reading the response body. `init` runs *before*
+  a request context exists, so its failures are returned directly without calling `onFail`.
+</Callout>
+
+Plugins run in array order, which matters when one depends on another's work — a tracing
+plugin that captures headers must come *after* the plugin that sets them.
+
+```ts
+await okfetch("/orders", {
+  baseURL,
+  plugins: [withFreshToken(getToken), requestId(), otel()],
+});
+```
+
+## Streaming
+
+`stream: true` gives you a `ReadableStream` instead of a parsed body. Each SSE `data:` chunk
+is decoded independently, and validated independently when an `outputSchema` is present.
+
+```ts
+const result = await okfetch("/chat/completions", {
+  baseURL,
+  method: "POST",
+  body: { model: "gpt-4o-mini", messages, stream: true },
+  stream: true,
+  outputSchema: z.object({
+    delta: z.string(),
+    done: z.boolean(),
+  }),
+});
+
+if (result.isOk()) {
+  for await (const chunk of result.value) {
+    process.stdout.write(chunk.delta); // typed per chunk
+    if (chunk.done) break;
+  }
+}
+```
+
+## Error model
+
+Six tagged errors, discriminated by `_tag`:
+
+| `_tag`            | Meaning                                       | Notable fields                     |
+| ----------------- | --------------------------------------------- | ---------------------------------- |
+| `FetchError`      | the request never completed (DNS, socket, CORS) | `message`, `cause`               |
+| `TimeoutError`    | the attempt exceeded `timeout`                | `message`, `cause`                 |
+| `ApiError`        | a non-2xx response                            | `statusCode`, `statusText`, `data` |
+| `ParseError`      | the body could not be read or JSON-parsed     | `message`, `cause`                 |
+| `ValidationError` | a schema rejected a payload                   | `type`, `issues`                   |
+| `PluginError`     | a plugin hook threw                           | `pluginName`, `hook`               |
+
+Because they are values, `match` handles them exhaustively:
+
+```ts
+const message = result.match({
+  ok: (todo) => `Loaded ${todo.title}`,
+  err: (error) => {
+    switch (error._tag) {
+      case "ApiError":
+        return `Server said ${error.statusCode}`;
+      case "TimeoutError":
+        return "Too slow — try again";
+      case "ValidationError":
+        return `Bad ${error.type}: ${error.issues.length} issue(s)`;
+      default:
+        return error.message;
+    }
+  },
+});
+```
+
+Nothing in this list is thrown. A `throw` escaping `okfetch` is a bug, not an expected
+failure mode.
+
+## Exports
+
+- **Functions** — `okfetch`, `validateClientErrors`, `validateAllErrors`
+- **Errors** — `FetchError`, `TimeoutError`, `ApiError`, `ParseError`, `ValidationError`, `PluginError`
+- **Types** — `OkfetchOptions`, `OkfetchError`, `OkfetchPlugin`, `OkfetchPluginHooks`, `OkfetchSuccess`, `RetryOptions`, `Auth`
+
+## Next
+
+<Cards>
+  <Card
+    title="Outgrown one-off calls?"
+    href="/docs/api"
+    description="@okfetch/api turns endpoint definitions into a typed client."
+  />
+  <Card
+    title="Want logs for free?"
+    href="/docs/logger"
+    description="Drop in the pino plugin instead of writing hooks yourself."
+  />
+</Cards>

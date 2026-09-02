@@ -1,0 +1,243 @@
+---
+title: '@okfetch/otel'
+description: One OpenTelemetry CLIENT span per request — semantic-convention attributes, trace propagation, and redaction that errs on the side of hiding.
+icon: Activity
+---
+
+`@okfetch/otel` records **one `CLIENT` span per request**, covering every retry attempt, and
+injects a `traceparent` header so the service you called joins the same trace.
+
+It only depends on `@opentelemetry/api`, so it works with whatever SDK you already run.
+
+<Tabs items={["bun", "npm", "pnpm"]}>
+  <Tab value="bun">
+
+```bash
+bun add @okfetch/otel @okfetch/fetch @opentelemetry/api
+```
+
+  </Tab>
+  <Tab value="npm">
+
+```bash
+npm install @okfetch/otel @okfetch/fetch @opentelemetry/api
+```
+
+  </Tab>
+  <Tab value="pnpm">
+
+```bash
+pnpm add @okfetch/otel @okfetch/fetch @opentelemetry/api
+```
+
+  </Tab>
+</Tabs>
+
+<Callout title="You need a registered provider">
+  Without a global tracer provider the plugin is a no-op. Register an SDK once at startup,
+  before the first request.
+</Callout>
+
+```ts title="telemetry.ts"
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+
+new NodeSDK({
+  serviceName: "checkout-api",
+  traceExporter: new OTLPTraceExporter(),
+}).start();
+```
+
+```ts
+import { okfetch } from "@okfetch/fetch";
+import { otel } from "@okfetch/otel";
+
+await okfetch("/todos/:id", {
+  baseURL: "https://api.example.com",
+  params: { id: 1 },
+  query: { include: "owner" },
+  plugins: [otel()],
+});
+// span: GET /todos/:id
+```
+
+<Callout type="warn" title="Order matters">
+  Put `otel()` **after** any plugin that sets headers, or those headers will not exist yet
+  when the span is built. Header capture is opt-in regardless, per OpenTelemetry's security
+  guidance.
+</Callout>
+
+## What the span looks like
+
+The span is named `{method}`, or `{method} {path template}` when the request uses `params` —
+so `GET /todos/:id` groups every id under one operation instead of exploding your cardinality.
+
+Attributes follow the [HTTP semantic conventions](https://opentelemetry.io/docs/specs/semconv/http/)
+wherever one exists.
+
+| Attribute                      | Value                                                                        |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `http.request.method`          | Known request method, or `_OTHER`                                            |
+| `http.request.method_original` | Original method when `http.request.method` is `_OTHER`                       |
+| `http.request.body.size`       | Request payload bytes, when enabled and accurately observable                |
+| `http.request.header.<name>`   | Explicitly selected request headers, sensitive values redacted               |
+| `http.request.resend_count`    | Number of retries performed                                                  |
+| `http.response.body.size`      | Response payload bytes from `Content-Length`, when enabled and applicable    |
+| `http.response.header.<name>`  | Explicitly selected response headers, sensitive values redacted              |
+| `http.response.status_code`    | Status code of the final response                                            |
+| `url.full`                     | Full URL, query redacted, credentials stripped, fragment dropped             |
+| `url.scheme`                   | URL scheme                                                                   |
+| `url.path`                     | URL path                                                                     |
+| `url.query`                    | Query string with redacted parameters (omitted when empty)                   |
+| `url.template`                 | Path template when `params` are used                                         |
+| `server.address`               | Hostname                                                                     |
+| `server.port`                  | Explicit or scheme-default port                                              |
+| `error.type`                   | Status code for API errors, otherwise the okfetch error tag                  |
+| `okfetch.error.tag`            | okfetch error tag (`ApiError`, `FetchError`, …)                              |
+| `okfetch.validation.issues`    | Formatted schema issues for validation failures                              |
+
+Request and response **bodies are never recorded**.
+
+### Failures
+
+- `ApiError` (non-2xx) sets span status `ERROR`. No status description is added, because
+  `http.response.status_code` already carries the reason.
+- `FetchError`, `TimeoutError`, `ParseError`, and `PluginError` set span status `ERROR` with
+  the message and record an `exception` event via `span.recordException`.
+- `ValidationError` does the same, plus formatted schema issues on the status message, the
+  exception message, and `okfetch.validation.issues` — including
+  [request-side failures](/docs/api#request-side-validation) that never hit the network.
+
+### Retries
+
+Every retry adds an `okfetch.retry` event with the attempt number, the error tag, and the
+status code when a response was received. Five attempts still produce **one** span, with
+`http.request.resend_count = 4` and four events on the timeline.
+
+## Options
+
+<TypeTable
+  type={{
+    tracer: {
+      type: "Tracer",
+      default: 'trace.getTracer("@okfetch/otel")',
+      description: "Tracer used to start spans.",
+    },
+    captureRequestHeaders: {
+      type: "boolean | readonly string[]",
+      default: "none",
+      description: "Request headers to record as http.request.header.<name>. Pass true to capture every one.",
+    },
+    captureResponseHeaders: {
+      type: "boolean | readonly string[]",
+      default: "none",
+      description: "Response headers to record as http.response.header.<name>. Pass true to capture every one.",
+    },
+    captureBodySizes: {
+      type: "boolean",
+      default: "false",
+      description: "Record payload body sizes when Fetch exposes enough to do so accurately.",
+    },
+    propagateTraceContext: {
+      type: "boolean",
+      default: "true",
+      description: "Inject W3C traceparent / tracestate headers into the request.",
+    },
+    knownMethods: {
+      type: "readonly string[]",
+      default: "DEFAULT_KNOWN_HTTP_METHODS",
+      description: "Case-sensitive methods known to the instrumentation. Replaces the defaults entirely.",
+    },
+    redact: {
+      type: "{ headers?, queryParams?, values? }",
+      description: "What to hide. Each entry is either an array that replaces the defaults, or a function receiving the defaults.",
+    },
+  }}
+/>
+
+```ts
+otel({
+  captureRequestHeaders: ["content-type", "x-tenant"],
+  captureResponseHeaders: ["content-type", "x-request-id"],
+  captureBodySizes: true,
+});
+```
+
+## Redaction
+
+The defaults hide a lot, deliberately. Three independent matchers run:
+
+- **`headers`** — names such as `authorization`, `cookie`, `x-api-key`, plus a broad pattern
+- **`queryParams`** — names such as `token`, `access_token`, `password`, the OAuth grant
+  parameters, and the AWS SigV4 presigned-URL fields
+- **`values`** — value shapes, whatever the name: JWTs (`eyJ…` with three segments) and
+  `Bearer` / `Basic` / `Digest` / `Negotiate` / `Token` / `OAuth` / `AWS4-HMAC-SHA256` prefixes
+
+`DEFAULT_REDACTED_NAME_PATTERN` sits in both name lists: anything containing `auth`, `bearer`,
+`cred`, `jwt`, `otp`, `passw`, `private`, `secret`, `session`, `sig`, `token`, or `api-key` is
+redacted even when never listed. Matching is case-insensitive.
+
+So `X-Session-Id` is redacted because of its name, and a JWT sent as `X-Fun-Header` is
+redacted because of its value. Redacted values are replaced with `REDACTED`
+(exported as `REDACTED_VALUE`).
+
+### Extending vs. replacing
+
+Pass an **array** to replace a default list, or a **function** to extend it. The function form
+is almost always what you want:
+
+```ts
+otel({
+  redact: {
+    // extend: keep every default, add two more
+    headers: (defaults) => [...defaults, "x-tenant", /^x-internal-/i],
+
+    // replace: ONLY customer_id is redacted from now on
+    queryParams: ["customer_id"],
+
+    // extend value patterns with an internal ticket format
+    values: (defaults) => [...defaults, /^TKT-/],
+  },
+});
+```
+
+<Callout type="warn">
+  Replacing a list with an array drops `DEFAULT_REDACTED_NAME_PATTERN` along with it. If you
+  still want the catch-all, include it yourself:
+  `queryParams: [DEFAULT_REDACTED_NAME_PATTERN, "customer_id"]`.
+</Callout>
+
+## What is intentionally missing
+
+The plugin emits every HTTP registry attribute that applies to a Fetch client **and** can be
+observed accurately — nothing is estimated.
+
+- `http.route` is a server-span attribute; `url.template` is the client-side equivalent.
+- `http.connection.state` belongs to connection-pool metrics, which Fetch does not expose.
+- `http.request.size` and `http.response.size` count bytes on the wire, including framing,
+  which Fetch also does not expose.
+- Response body size is omitted for `HEAD`, `204`, and `304`, and whenever there is no valid
+  `Content-Length`.
+- Deprecated HTTP attributes are never emitted.
+
+## Exports
+
+Beyond `otel()` itself, the defaults are exported so you can extend them explicitly:
+
+- `DEFAULT_REDACTED_HEADERS`, `DEFAULT_REDACTED_QUERY_PARAMS`, `DEFAULT_REDACTED_VALUE_PATTERNS`, `DEFAULT_REDACTED_NAME_PATTERN`
+- `DEFAULT_KNOWN_HTTP_METHODS` — RFC 9110 methods plus `PATCH` and `QUERY`
+- `REDACTED_VALUE` — the placeholder written in place of a redacted value
+- Types: `RedactionMatcher`, `RedactionList`, `RedactionOption`, `ValuePatternList`, `ValuePatternOption`, `HeaderCaptureOption`
+
+## Together with logging
+
+Tracing and logging answer different questions, and the plugins are independent — register
+both, with `otel()` last so it sees the finished request:
+
+```ts
+export const api = createApi({
+  baseURL,
+  endpoints,
+  plugins: [logger(), otel({ captureResponseHeaders: ["x-request-id"] })],
+});
+```

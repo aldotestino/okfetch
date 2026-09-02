@@ -1,0 +1,170 @@
+---
+title: '@okfetch/logger'
+description: A ready-made pino plugin that logs requests, successes, failures, and retries through the okfetch lifecycle.
+icon: ScrollText
+---
+
+`@okfetch/logger` is the shortest possible answer to "I want to see what my HTTP layer is
+doing". It is a plain `OkfetchPlugin` wrapping [pino](https://getpino.io), covering four of
+the six [lifecycle hooks](/docs/fetch#the-lifecycle).
+
+<Tabs items={["bun", "npm", "pnpm"]}>
+  <Tab value="bun">
+
+```bash
+bun add @okfetch/logger @okfetch/fetch pino
+```
+
+  </Tab>
+  <Tab value="npm">
+
+```bash
+npm install @okfetch/logger @okfetch/fetch pino
+```
+
+  </Tab>
+  <Tab value="pnpm">
+
+```bash
+pnpm add @okfetch/logger @okfetch/fetch pino
+```
+
+  </Tab>
+</Tabs>
+
+## Usage
+
+With no arguments it creates its own pino instance and logs at `info`:
+
+```ts
+import { okfetch } from "@okfetch/fetch";
+import { logger } from "@okfetch/logger";
+
+await okfetch("https://example.com/health", { plugins: [logger()] });
+```
+
+It works the same way on a generated client, where you usually register it once:
+
+```ts
+export const api = createApi({ baseURL, endpoints, plugins: [logger()] });
+```
+
+## Options
+
+<TypeTable
+  type={{
+    logger: {
+      type: "Logger",
+      description: "An existing logger with info/warn/error methods taking a message string. Mutually exclusive with pinoOptions.",
+    },
+    pinoOptions: {
+      type: "pino.LoggerOptions",
+      description: "Options for the pino instance the plugin creates when no logger is passed.",
+    },
+    logDataOnSuccess: {
+      type: "boolean",
+      default: "false",
+      description: "Also log the parsed success payload, not just the status.",
+    },
+  }}
+/>
+
+### Bring your own logger
+
+`logger` accepts anything with `info`, `warn`, and `error` methods that take a message
+string — an existing pino instance, a child logger scoped to a request, or a thin adapter
+over something else entirely.
+
+```ts
+import pino from "pino";
+
+const httpLog = pino({ level: "debug" }).child({ component: "http" });
+
+await okfetch("/orders", { baseURL, plugins: [logger({ logger: httpLog })] });
+```
+
+```ts
+// any compatible shape works
+const consoleLogger = {
+  info: (message: string) => console.info(message),
+  warn: (message: string) => console.warn(message),
+  error: (message: string) => console.error(message),
+};
+```
+
+### Or let the plugin build one
+
+```ts
+logger({
+  pinoOptions: {
+    level: "debug",
+    redact: ["req.headers.authorization"],
+    transport: { target: "pino-pretty" },
+  },
+});
+```
+
+<Callout type="warn">
+  `logger` and `pinoOptions` are mutually exclusive — the types will not let you pass both.
+</Callout>
+
+### Logging payloads
+
+`logDataOnSuccess` appends the parsed body to the success line. Handy in development,
+risky in production: response payloads routinely carry personal data, and pino's `redact`
+does not reach into a value that was already stringified into the message.
+
+```ts
+logger({ logDataOnSuccess: process.env.NODE_ENV !== "production" });
+```
+
+## What ends up in the log
+
+| Hook        | Level   | Line                                                   |
+| ----------- | ------- | ------------------------------------------------------ |
+| `onRequest` | `info`  | `Sending request to [GET] https://api.example.com/orders` |
+| `onSuccess` | `info`  | `Request succeeded with status 200`                     |
+| `onFail`    | `error` | `Request failed [ApiError] ...`                         |
+| `onRetry`   | `warn`  | `Request failed [TimeoutError], retrying attempt 2...`  |
+
+Because `onRequest` fires on every attempt, a retried request produces one request line per
+attempt — the retry warning between them tells you why.
+
+A failure that never reached the network still logs. This is what an
+[input validation error](/docs/api#request-side-validation) from `@okfetch/api` looks like:
+
+```text
+ERROR: Request failed [ValidationError] Invalid body
+```
+
+## Writing your own instead
+
+The whole package is about fifty lines against the public `OkfetchPlugin` interface. If you
+need request correlation, sampling, or a different message format, copying it is a reasonable
+starting point:
+
+```ts
+import type { OkfetchPlugin } from "@okfetch/fetch";
+
+const timing = (): OkfetchPlugin => {
+  const started = new WeakMap<object, number>();
+
+  return {
+    name: "timing",
+    version: "1.0.0",
+    hooks: {
+      onRequest(context) {
+        started.set(context, performance.now());
+        return context;
+      },
+      onSuccess(context, response) {
+        const elapsed = performance.now() - (started.get(context) ?? 0);
+        console.info(`${context.method} ${context.url.pathname} ${response.status} ${elapsed.toFixed(0)}ms`);
+      },
+    },
+  };
+};
+```
+
+For distributed tracing rather than lines of text, reach for
+[`@okfetch/otel`](/docs/otel) — the two compose happily in the same `plugins` array.
