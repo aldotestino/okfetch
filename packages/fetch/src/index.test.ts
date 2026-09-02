@@ -74,6 +74,16 @@ const collectStreamChunks = async <T>(
   return chunks;
 };
 
+const getRejection = async (promise: Promise<unknown>): Promise<unknown> => {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+
+  throw new Error("Expected promise to reject");
+};
+
 const createValidatorPlugin = (schemas: {
   body?: StandardSchemaV1;
   params?: StandardSchemaV1;
@@ -650,7 +660,8 @@ describe("okfetch v2 plugins", () => {
       const reader = result.value.getReader();
       const firstChunk = await reader.read();
       expect(firstChunk.value).toEqual({ id: 1 });
-      await expect(reader.read()).rejects.toMatchObject({
+      const error = await getRejection(reader.read());
+      expect(error).toMatchObject({
         _tag: "ValidationError",
         type: "output",
       });
@@ -1249,7 +1260,7 @@ describe("retry helpers", () => {
   });
 
   test("sleep resolves asynchronously", async () => {
-    await expect(sleep(0)).resolves.toBeUndefined();
+    expect(await sleep(0)).toBeUndefined();
   });
 });
 
@@ -1273,7 +1284,7 @@ describe("stream helpers", () => {
       })
     );
 
-    await expect(collectStreamChunks(parsed)).resolves.toEqual([{ id: 1 }]);
+    expect(await collectStreamChunks(parsed)).toEqual([{ id: 1 }]);
   });
 
   test("surfaces parse errors for invalid json stream chunks", async () => {
@@ -1293,7 +1304,8 @@ describe("stream helpers", () => {
     );
     const reader = parsed.getReader();
 
-    await expect(reader.read()).rejects.toMatchObject({
+    const error = await getRejection(reader.read());
+    expect(error).toMatchObject({
       _tag: "ParseError",
     });
     reader.releaseLock();
@@ -1316,7 +1328,8 @@ describe("stream helpers", () => {
     );
     const reader = parsed.getReader();
 
-    await expect(reader.read()).rejects.toMatchObject({
+    const error = await getRejection(reader.read());
+    expect(error).toMatchObject({
       _tag: "ValidationError",
       type: "output",
     });
