@@ -48,14 +48,25 @@ Options:
 - `tracer?: Tracer` - tracer used to start spans. Defaults to `trace.getTracer("@okfetch/otel")` from the global provider.
 - `captureRequestHeaders?: boolean` - record request headers as `http.request.header.<name>` attributes. Defaults to `true`.
 - `propagateTraceContext?: boolean` - inject W3C `traceparent` / `tracestate` headers into the request. Defaults to `true`.
-- `redactedHeaders?: (string | RegExp)[]` - header names or patterns redacted in addition to the defaults.
-- `redactedQueryParams?: (string | RegExp)[]` - query parameter names or patterns redacted in addition to the defaults.
+- `redact?: { headers?, queryParams? }` - what to redact. Each entry is either an array of names and `RegExp` patterns that **replaces** the defaults, or a function that **receives the defaults** and returns the list to use.
+
+```ts
+otel({
+  redact: {
+    // extend the defaults
+    headers: (defaults) => [...defaults, "x-tenant", /^x-internal-/i],
+    // replace the defaults entirely
+    queryParams: ["customer_id"],
+  },
+});
+```
 
 Exports:
 
-- `DEFAULT_REDACTED_HEADERS` - `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-auth-token`, `api-key`, `x-amz-security-token`, `x-amz-credential`, `x-amz-signature`
-- `DEFAULT_REDACTED_QUERY_PARAMS` - common credential parameter names such as `token`, `access_token`, `api_key`, `password`, `secret`, `signature`, and the AWS SigV4 presigned-URL fields `X-Amz-Credential`, `X-Amz-Security-Token`, `X-Amz-Signature`
-- `DEFAULT_REDACTED_NAME_PATTERN` - a pattern applied to every header and query parameter name; anything containing `auth`, `credential`, `passw`, `secret`, `session`, `sig`, `token`, or `api-key` is redacted even when not listed explicitly
+- `DEFAULT_REDACTED_HEADERS` - `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-auth-token`, `api-key`, `x-amz-security-token`, `x-amz-credential`, `x-amz-signature`, plus `DEFAULT_REDACTED_NAME_PATTERN`
+- `DEFAULT_REDACTED_QUERY_PARAMS` - common credential parameter names such as `token`, `access_token`, `api_key`, `password`, `secret`, `signature`, the AWS SigV4 presigned-URL fields `X-Amz-Credential`, `X-Amz-Security-Token`, `X-Amz-Signature`, plus `DEFAULT_REDACTED_NAME_PATTERN`
+- `DEFAULT_REDACTED_NAME_PATTERN` - a pattern included in both default lists; any name containing `auth`, `credential`, `passw`, `secret`, `session`, `sig`, `token`, or `api-key` is redacted even when not listed explicitly. Replacing a list with an array drops it, so include it yourself if you still want it.
+- `RedactionMatcher`, `RedactionList`, `RedactionOption` - the types behind the `redact` option
 - `REDACTED_VALUE` - the `[REDACTED]` placeholder written in place of redacted values
 
 Name matching is case-insensitive for both headers and query parameters. Redaction errs on the side of hiding too much: a name such as `X-Session-Id` is redacted because it matches the default pattern.

@@ -370,8 +370,10 @@ describe("@okfetch/otel", () => {
       headers: { "X-Tenant": "acme", "X-Trace-Me": "keep" },
       plugins: [
         otel({
-          redactedHeaders: ["x-tenant"],
-          redactedQueryParams: ["Customer"],
+          redact: {
+            headers: (defaults) => [...defaults, "x-tenant"],
+            queryParams: (defaults) => [...defaults, "Customer"],
+          },
           tracer,
         }),
       ],
@@ -441,7 +443,12 @@ describe("@okfetch/otel", () => {
         "X-Internal-Ref": "ref-1",
         "X-Session-Id": "sess-1",
       },
-      plugins: [otel({ redactedHeaders: [/^x-internal-/i], tracer })],
+      plugins: [
+        otel({
+          redact: { headers: (defaults) => [...defaults, /^x-internal-/i] },
+          tracer,
+        }),
+      ],
       query: { clientSecret: "hidden", idempotencyKey: "keep", page: 1 },
     });
 
@@ -458,6 +465,32 @@ describe("@okfetch/otel", () => {
     expect(span.attributes["url.query"]).toBe(
       `clientSecret=${encodeURIComponent(REDACTED_VALUE)}&idempotencyKey=keep&page=1`
     );
+  });
+
+  test("replaces the default redaction lists when arrays are given", async () => {
+    const { fetch } = createMockFetch(() => Response.json({ ok: true }));
+
+    await okfetch("https://api.example.com/todos", {
+      auth: { token: "visible-token", type: "bearer" },
+      fetch,
+      headers: { "X-Tenant": "acme" },
+      plugins: [
+        otel({
+          redact: { headers: ["x-tenant"], queryParams: [] },
+          tracer,
+        }),
+      ],
+      query: { token: "visible-query" },
+    });
+
+    const span = getSingleSpan();
+    expect(span.attributes["http.request.header.x-tenant"]).toEqual([
+      REDACTED_VALUE,
+    ]);
+    expect(span.attributes["http.request.header.authorization"]).toEqual([
+      "Bearer visible-token",
+    ]);
+    expect(span.attributes["url.query"]).toBe("token=visible-query");
   });
 
   test("redacts credentials embedded in the url", async () => {
@@ -559,6 +592,10 @@ describe("@okfetch/otel", () => {
     expect(DEFAULT_REDACTED_HEADERS).toContain("x-amz-security-token");
     expect(DEFAULT_REDACTED_QUERY_PARAMS).toContain("token");
     expect(DEFAULT_REDACTED_QUERY_PARAMS).toContain("x-amz-signature");
+    expect(DEFAULT_REDACTED_HEADERS).toContain(DEFAULT_REDACTED_NAME_PATTERN);
+    expect(DEFAULT_REDACTED_QUERY_PARAMS).toContain(
+      DEFAULT_REDACTED_NAME_PATTERN
+    );
     expect(DEFAULT_REDACTED_NAME_PATTERN.test("X-Goog-Signature")).toBe(true);
     expect(DEFAULT_REDACTED_NAME_PATTERN.test("content-type")).toBe(false);
   });

@@ -252,7 +252,7 @@ Key behavior to explain when relevant:
 - records the status code, and the status text when the request fails
 - injects `traceparent` into the outgoing request by default
 
-Main options: `tracer`, `captureRequestHeaders`, `propagateTraceContext`, `redactedHeaders`, `redactedQueryParams`.
+Main options: `tracer`, `captureRequestHeaders`, `propagateTraceContext`, and `redact` (`{ headers?, queryParams? }`, where an array replaces the default list and a function such as `(defaults) => [...defaults, "x-tenant"]` extends it).
 
 ## Streaming
 

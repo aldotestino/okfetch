@@ -26,8 +26,32 @@ const TRACER_NAME = "@okfetch/otel";
 /** Value written in place of redacted headers and query parameters. */
 export const REDACTED_VALUE = "[REDACTED]";
 
+/** A header or query parameter name, or a pattern tested against names. */
+export type RedactionMatcher = string | RegExp;
+
+/** A list of names and patterns whose values are redacted. */
+export type RedactionList = readonly RedactionMatcher[];
+
+/**
+ * Configures what gets redacted. An array replaces the defaults entirely; a
+ * function receives the defaults and returns the list to use, which makes
+ * extending them a one-liner: `(defaults) => [...defaults, "x-tenant"]`.
+ */
+export type RedactionOption =
+  | RedactionList
+  | ((defaults: RedactionList) => RedactionList);
+
+/**
+ * Header and query parameter names matching this pattern are redacted even
+ * when they are not listed explicitly, so vendor-specific credential fields
+ * such as `X-Amz-Security-Token` or `X-Goog-Signature` never leak. It is part
+ * of both default lists.
+ */
+export const DEFAULT_REDACTED_NAME_PATTERN =
+  /auth|credential|passw|secret|session|sig|token|api[-_]?key/i;
+
 /** Request headers whose values are never recorded on spans. */
-export const DEFAULT_REDACTED_HEADERS: readonly string[] = [
+export const DEFAULT_REDACTED_HEADERS: RedactionList = [
   "authorization",
   "proxy-authorization",
   "cookie",
@@ -38,10 +62,11 @@ export const DEFAULT_REDACTED_HEADERS: readonly string[] = [
   "x-amz-security-token",
   "x-amz-credential",
   "x-amz-signature",
+  DEFAULT_REDACTED_NAME_PATTERN,
 ];
 
 /** Query parameters whose values are never recorded on spans. */
-export const DEFAULT_REDACTED_QUERY_PARAMS: readonly string[] = [
+export const DEFAULT_REDACTED_QUERY_PARAMS: RedactionList = [
   "access_token",
   "api_key",
   "apikey",
@@ -61,18 +86,8 @@ export const DEFAULT_REDACTED_QUERY_PARAMS: readonly string[] = [
   "x-amz-security-token",
   "x-amz-signature",
   "x-goog-signature",
+  DEFAULT_REDACTED_NAME_PATTERN,
 ];
-
-/**
- * Header and query parameter names matching this pattern are redacted even
- * when they are not listed explicitly, so vendor-specific credential fields
- * such as `X-Amz-Security-Token` or `X-Goog-Signature` never leak.
- */
-export const DEFAULT_REDACTED_NAME_PATTERN =
-  /auth|credential|passw|secret|session|sig|token|api[-_]?key/i;
-
-/** A header or query parameter name, or a pattern tested against names. */
-export type RedactionMatcher = string | RegExp;
 
 export type OtelOptions = {
   /**
@@ -91,17 +106,16 @@ export type OtelOptions = {
    */
   propagateTraceContext?: boolean;
   /**
-   * Header names or patterns redacted in addition to
-   * `DEFAULT_REDACTED_HEADERS` and `DEFAULT_REDACTED_NAME_PATTERN`.
-   * Name matching is case-insensitive.
+   * What to redact from recorded headers and query parameters. Each entry
+   * accepts an array (replaces the defaults) or a function (receives the
+   * defaults and returns the list to use). Name matching is case-insensitive.
    */
-  redactedHeaders?: readonly RedactionMatcher[];
-  /**
-   * Query parameter names or patterns redacted in addition to
-   * `DEFAULT_REDACTED_QUERY_PARAMS` and `DEFAULT_REDACTED_NAME_PATTERN`.
-   * Name matching is case-insensitive.
-   */
-  redactedQueryParams?: readonly RedactionMatcher[];
+  redact?: {
+    /** Defaults to `DEFAULT_REDACTED_HEADERS`. */
+    headers?: RedactionOption;
+    /** Defaults to `DEFAULT_REDACTED_QUERY_PARAMS`. */
+    queryParams?: RedactionOption;
+  };
 };
 
 type OtelState = {
@@ -137,14 +151,22 @@ const headersSetter: TextMapSetter<Headers> = {
   },
 };
 
-const createNameMatcher = (
-  defaults: readonly string[],
-  extra: readonly RedactionMatcher[] | undefined
-): NameMatcher => {
-  const names = new Set(defaults.map((name) => name.toLowerCase()));
-  const patterns = [DEFAULT_REDACTED_NAME_PATTERN];
+const resolveRedactionList = (
+  defaults: RedactionList,
+  option: RedactionOption | undefined
+): RedactionList => {
+  if (option === undefined) {
+    return defaults;
+  }
 
-  for (const matcher of extra ?? []) {
+  return typeof option === "function" ? option(defaults) : option;
+};
+
+const createNameMatcher = (list: RedactionList): NameMatcher => {
+  const names = new Set<string>();
+  const patterns: RegExp[] = [];
+
+  for (const matcher of list) {
     if (typeof matcher === "string") {
       names.add(matcher.toLowerCase());
     } else {
@@ -154,19 +176,23 @@ const createNameMatcher = (
 
   return (name) =>
     names.has(name.toLowerCase()) ||
-    patterns.some((pattern) => pattern.test(name));
+    patterns.some((pattern) => {
+      pattern.lastIndex = 0;
+      return pattern.test(name);
+    });
 };
 
 const resolveOptions = (options: OtelOptions | undefined): ResolvedOptions => ({
   captureRequestHeaders: options?.captureRequestHeaders ?? true,
   propagateTraceContext: options?.propagateTraceContext ?? true,
   isRedactedHeader: createNameMatcher(
-    DEFAULT_REDACTED_HEADERS,
-    options?.redactedHeaders
+    resolveRedactionList(DEFAULT_REDACTED_HEADERS, options?.redact?.headers)
   ),
   isRedactedQueryParam: createNameMatcher(
-    DEFAULT_REDACTED_QUERY_PARAMS,
-    options?.redactedQueryParams
+    resolveRedactionList(
+      DEFAULT_REDACTED_QUERY_PARAMS,
+      options?.redact?.queryParams
+    )
   ),
   tracer: options?.tracer ?? trace.getTracer(TRACER_NAME, PLUGIN_VERSION),
 });
