@@ -237,6 +237,44 @@ describe("okfetch client package", () => {
     }
   });
 
+  test("input validation failures run plugin failure hooks before fetch", async () => {
+    let calls = 0;
+    let observedErrorTag = "";
+    const observerPlugin: OkfetchPlugin = {
+      name: "observer",
+      version: "1.0.0",
+      hooks: {
+        onFail: (_context, _response, error) => {
+          observedErrorTag = error._tag;
+        },
+      },
+    };
+    const mockFetch = createMockFetch(() => {
+      calls += 1;
+      return Response.json({ ok: true });
+    });
+    const api = createApi({
+      baseURL: "https://api.example.com",
+      endpoints: createEndpoints({
+        createUser: {
+          body: z.object({ name: z.string() }),
+          method: "POST",
+          path: "/users",
+        },
+      }),
+      fetch: mockFetch,
+      plugins: [observerPlugin],
+    });
+
+    const result = await api.createUser({
+      body: { name: 123 } as unknown as { name: string },
+    });
+
+    expect(result.isErr()).toBe(true);
+    expect(calls).toBe(0);
+    expect(observedErrorTag).toBe("ValidationError");
+  });
+
   test("validateInput false skips injected endpoint validation", async () => {
     let calls = 0;
     const mockFetch = createMockFetch((request) => {

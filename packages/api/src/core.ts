@@ -19,55 +19,58 @@ const isEndpoint = (
 
 const createValidationPlugin = (
   endpoint: EndpointDefinition,
-  enabled: boolean
+  enabled: boolean,
+  payload: Partial<Pick<OkfetchOptions, "body" | "params" | "query">>
 ): OkfetchPlugin => ({
   name: "okfetch-endpoint-validator",
   version: "1.0.0",
-  init: async ({ options, url }) => {
-    if (!enabled) {
-      return { options, url };
-    }
-
-    if (endpoint.params) {
-      const paramsResult = await validateSchema(
-        endpoint.params,
-        options.params ?? {}
-      );
-      if (!paramsResult.success) {
-        throw new ValidationError({
-          issues: paramsResult.issues,
-          type: "params",
-          message: "Endpoint params did not match schema",
-        });
+  hooks: {
+    onRequest: async (context) => {
+      if (!enabled) {
+        return context;
       }
-    }
 
-    if (endpoint.query) {
-      const queryResult = await validateSchema(
-        endpoint.query,
-        options.query ?? {}
-      );
-      if (!queryResult.success) {
-        throw new ValidationError({
-          issues: queryResult.issues,
-          type: "query",
-          message: "Endpoint query did not match schema",
-        });
+      if (endpoint.params) {
+        const paramsResult = await validateSchema(
+          endpoint.params,
+          payload.params ?? {}
+        );
+        if (!paramsResult.success) {
+          throw new ValidationError({
+            issues: paramsResult.issues,
+            type: "params",
+            message: "Endpoint params did not match schema",
+          });
+        }
       }
-    }
 
-    if (endpoint.body) {
-      const bodyResult = await validateSchema(endpoint.body, options.body);
-      if (!bodyResult.success) {
-        throw new ValidationError({
-          issues: bodyResult.issues,
-          type: "body",
-          message: "Endpoint body did not match schema",
-        });
+      if (endpoint.query) {
+        const queryResult = await validateSchema(
+          endpoint.query,
+          payload.query ?? {}
+        );
+        if (!queryResult.success) {
+          throw new ValidationError({
+            issues: queryResult.issues,
+            type: "query",
+            message: "Endpoint query did not match schema",
+          });
+        }
       }
-    }
 
-    return { options, url };
+      if (endpoint.body) {
+        const bodyResult = await validateSchema(endpoint.body, payload.body);
+        if (!bodyResult.success) {
+          throw new ValidationError({
+            issues: bodyResult.issues,
+            type: "body",
+            message: "Endpoint body did not match schema",
+          });
+        }
+      }
+
+      return context;
+    },
   },
 });
 
@@ -143,7 +146,7 @@ const buildEndpointFn = <TEndpoint extends EndpointDefinition, TGlobalError>(
       outputSchema: endpoint.output,
       params: payload.params,
       plugins: [
-        createValidationPlugin(endpoint, validateInput),
+        createValidationPlugin(endpoint, validateInput, payload),
         ...(globalPlugins ?? []),
         ...(endpointPlugins ?? []),
         ...(overridePlugins ?? []),

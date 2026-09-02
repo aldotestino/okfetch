@@ -796,6 +796,45 @@ describe("@okfetch/otel", () => {
     expect(exporter.getFinishedSpans()).toHaveLength(0);
   });
 
+  test("records failures from an earlier onRequest hook", async () => {
+    const { fetch, requests } = createMockFetch(() =>
+      Response.json({ ok: true })
+    );
+    const failingValidator: OkfetchPlugin = {
+      name: "validator",
+      version: "1.0.0",
+      hooks: {
+        onRequest: () => {
+          throw new ValidationError({
+            issues: [{ message: "title is required", path: ["title"] }],
+            message: "Endpoint body did not match schema",
+            type: "body",
+          });
+        },
+      },
+    };
+
+    const result = await okfetch("https://api.example.com/todos", {
+      body: { title: "" },
+      fetch,
+      method: "POST",
+      plugins: [failingValidator, otel({ tracer })],
+    });
+
+    expect(result.isErr()).toBe(true);
+    expect(requests).toHaveLength(0);
+
+    const span = getSingleSpan();
+    expect(span.name).toBe("POST");
+    expect(span.status.code).toBe(SpanStatusCode.ERROR);
+    expect(span.attributes).toMatchObject({
+      "error.type": "ValidationError",
+      "okfetch.error.tag": "ValidationError",
+      "okfetch.validation.issues": ["title: title is required"],
+    });
+    expect(span.attributes["http.response.status_code"]).toBeUndefined();
+  });
+
   test("ends the span when a later plugin's onRequest throws", async () => {
     const { fetch, requests } = createMockFetch(() =>
       Response.json({ ok: true })

@@ -678,10 +678,11 @@ export const otel = (options?: OtelOptions): OkfetchPlugin => {
       },
       onFail(ctx, response, error) {
         const state = getState(ctx);
-        if (!state?.span) {
+        if (!state) {
           return;
         }
 
+        state.span ??= startSpan(ctx, state, resolved);
         recordFailure(state.span, ctx, response, error, resolved);
         endSpan(state);
       },
