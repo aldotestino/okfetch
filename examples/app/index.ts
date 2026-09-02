@@ -25,7 +25,7 @@ const formatIssuePath = (
 
 const todoSchema = z.object({
   completed: z.boolean(),
-  id: z.boolean(),
+  id: z.number(),
   title: z.string(),
   userId: z.number(),
 });
