@@ -1,0 +1,280 @@
+---
+title: '@okfetch/api'
+description: Describe your endpoints once, get a fully typed client — with body, params, and query validated before anything leaves the process.
+icon: Boxes
+---
+
+`@okfetch/api` takes a tree of endpoint definitions and hands back a client whose shape
+mirrors it. `endpoints.billing.invoices.list` becomes `api.billing.invoices.list()`, with
+arguments and return type derived from the schemas you attached.
+
+It composes [`@okfetch/fetch`](/docs/fetch) rather than replacing it: parsing, retries,
+timeouts, auth, streaming, and plugins all behave exactly as documented there.
+
+<Tabs items={["bun", "npm", "pnpm"]}>
+  <Tab value="bun">
+
+```bash
+bun add @okfetch/api @okfetch/fetch better-result
+```
+
+  </Tab>
+  <Tab value="npm">
+
+```bash
+npm install @okfetch/api @okfetch/fetch better-result
+```
+
+  </Tab>
+  <Tab value="pnpm">
+
+```bash
+pnpm add @okfetch/api @okfetch/fetch better-result
+```
+
+  </Tab>
+</Tabs>
+
+## Defining endpoints
+
+`createEndpoints` is an identity function that exists to preserve literal types. Nest freely —
+any object without a `method` key is treated as a namespace.
+
+```ts title="lib/endpoints.ts"
+import { createEndpoints } from "@okfetch/api";
+import { z } from "zod/v4";
+
+const invoice = z.object({
+  id: z.string(),
+  amountCents: z.number().int(),
+  status: z.enum(["draft", "open", "paid", "void"]),
+});
+
+export const endpoints = createEndpoints({
+  billing: {
+    invoices: {
+      list: {
+        method: "GET",
+        path: "/billing/invoices",
+        query: z.object({
+          status: z.enum(["open", "paid"]).optional(),
+          limit: z.number().int().max(100).default(20),
+        }),
+        output: z.array(invoice),
+      },
+      get: {
+        method: "GET",
+        path: "/billing/invoices/:id",
+        params: z.object({ id: z.string() }),
+        output: invoice,
+      },
+      void: {
+        method: "POST",
+        path: "/billing/invoices/:id/void",
+        params: z.object({ id: z.string() }),
+        body: z.object({ reason: z.string().min(3) }),
+        output: invoice,
+      },
+    },
+  },
+  health: {
+    check: {
+      method: "GET",
+      path: "/health",
+      output: z.object({ status: z.literal("ok") }),
+    },
+  },
+});
+```
+
+Each endpoint accepts:
+
+<TypeTable
+  type={{
+    method: { type: '"GET" | "POST" | ...', description: "HTTP method.", required: true },
+    path: { type: '`/${string}`', description: "Path appended to the client baseURL. `:name` segments are filled from params.", required: true },
+    params: { type: "StandardSchemaV1", description: "Validates and types the path params." },
+    query: { type: "StandardSchemaV1", description: "Validates and types the query string." },
+    body: { type: "StandardSchemaV1", description: "Validates and types the request body." },
+    output: { type: "StandardSchemaV1", description: "Validates and types the success payload." },
+    error: { type: "StandardSchemaV1", description: "Per-endpoint error payload schema; overrides the client errorSchema." },
+    requestOptions: { type: "EndpointRequestOverrides", description: "Transport defaults for this endpoint — headers, timeout, retry, plugins." },
+    stream: { type: "true", description: "Return a ReadableStream of validated chunks." },
+  }}
+/>
+
+## Creating the client
+
+```ts title="lib/api.ts"
+import { createApi } from "@okfetch/api";
+import { logger } from "@okfetch/logger";
+import { endpoints } from "./endpoints";
+
+export const api = createApi({
+  baseURL: "https://api.example.com",
+  endpoints,
+  headers: { "x-client": "web-app" },
+  timeout: 5_000,
+  retry: { strategy: "exponential", attempts: 3 },
+  plugins: [logger()],
+});
+```
+
+The generated call signature depends on the schemas. Endpoints with no `params`, `query`, or
+`body` take no first argument at all:
+
+```ts
+await api.billing.invoices.list({ query: { status: "open", limit: 50 } });
+await api.billing.invoices.get({ params: { id: "in_123" } });
+await api.billing.invoices.void({
+  params: { id: "in_123" },
+  body: { reason: "duplicate charge" },
+});
+
+// an endpoint with no params/query/body takes no options object at all
+await api.health.check();
+```
+
+### Three layers of options
+
+Transport options are resolved global → endpoint → per-call, with the later winning.
+
+```ts
+const result = await api.billing.invoices.get(
+  { params: { id: "in_123" } },
+  {
+    // second argument: overrides for this call only
+    headers: { "x-request-id": crypto.randomUUID() },
+    timeout: 1_000,
+  },
+);
+```
+
+Overrides cover transport concerns only — `baseURL`, `method`, `path`, and the schemas stay
+owned by the definition, which is what keeps the client's types honest.
+
+## Request-side validation
+
+This is the part `@okfetch/fetch` cannot do on its own: because the endpoint declares its
+inputs, `body`, `params`, and `query` are checked **before the request is sent**.
+
+```ts
+const result = await api.billing.invoices.void({
+  params: { id: "in_123" },
+  body: { reason: "no" }, // min(3) — fails here
+});
+
+result.isErr() && result.error._tag === "ValidationError"; // true
+result.error.type; // "body"
+```
+
+No network call happens. Plugin `onFail` hooks still run, so the failure shows up in your
+logs and traces like any other — a request that never left the process is exactly the kind of
+bug you want visible.
+
+Disable it with `validateInput: false` if you validate at the form layer and do not want to
+pay twice.
+
+## Typed error payloads
+
+Set `errorSchema` once on the client for the shape your API uses everywhere, and override it
+per endpoint with `error` where a route differs.
+
+```ts
+import { validateClientErrors } from "@okfetch/fetch";
+
+export const api = createApi({
+  baseURL: "https://api.example.com",
+  endpoints,
+  errorSchema: z.object({
+    code: z.string(),
+    message: z.string(),
+    requestId: z.string(),
+  }),
+  shouldValidateError: validateClientErrors, // 4xx only; 5xx bodies parsed, not validated
+});
+
+const result = await api.billing.invoices.get({ params: { id: "in_404" } });
+
+if (result.isErr() && result.error._tag === "ApiError") {
+  console.error(result.error.data?.requestId); // typed from errorSchema
+}
+```
+
+## Streaming endpoints
+
+Mark an endpoint `stream: true` and `output` describes a single chunk rather than the whole
+body. The result is a `ReadableStream` of validated chunks.
+
+```ts
+const endpoints = createEndpoints({
+  events: {
+    subscribe: {
+      method: "GET",
+      path: "/events",
+      query: z.object({ since: z.string().optional() }),
+      output: z.object({ id: z.number(), type: z.string(), payload: z.unknown() }),
+      stream: true,
+    },
+  },
+});
+
+const result = await api.events.subscribe({ query: { since: lastSeenId } });
+
+if (result.isOk()) {
+  for await (const event of result.value) {
+    handle(event); // { id: number; type: string; payload: unknown }
+  }
+}
+```
+
+## ApiService
+
+If you prefer a class — for dependency injection, or to hang domain helpers off the client —
+`ApiService` builds the base class for you. The generated client is available as `this.api`.
+
+```ts
+import { ApiService } from "@okfetch/api";
+import { endpoints } from "./endpoints";
+
+class BillingService extends ApiService(endpoints) {
+  constructor(private readonly tenantId: string) {
+    super({
+      baseURL: "https://api.example.com",
+      headers: { "x-tenant": tenantId },
+    });
+  }
+
+  async openInvoiceTotal() {
+    const result = await this.api.billing.invoices.list({
+      query: { status: "open", limit: 100 },
+    });
+
+    return result.map((invoices) =>
+      invoices.reduce((sum, invoice) => sum + invoice.amountCents, 0),
+    );
+  }
+}
+```
+
+`ApiService` takes an optional second argument for `errorSchema`, since that one is baked into
+the class's types rather than passed at construction time.
+
+## fetch or api?
+
+Both give you the same `Result`, the same errors, and the same plugins. The difference is
+where the request shape lives.
+
+| | `@okfetch/fetch` | `@okfetch/api` |
+| --- | --- | --- |
+| Request shape lives | at each call site | in one endpoint tree |
+| Input validation | none | `body`, `params`, `query` |
+| Best when | a few calls, or you are building an abstraction | a shared API surface used across the app |
+
+They also mix: nothing stops you from using `okfetch` directly for a one-off upload while the
+rest of the app goes through a generated client.
+
+## Exports
+
+- **Functions** — `createEndpoints`, `createApi`, `ApiService`
+- **Types** — `Endpoint`, `EndpointTree`, `EndpointCallOptions`, `EndpointRequestOverrides`, `EndpointFunction`, `ApiClient`, `CreateApiOptions`, `OkfetchError`

@@ -1,0 +1,262 @@
+---
+title: Introduction
+description: A small family of TypeScript-first HTTP packages that make fetch safer and more composable without hiding the platform.
+icon: BookOpen
+---
+
+`okfetch` is a family of packages built around one idea: make `fetch` safer and more
+composable **without hiding how the web platform works**.
+
+You still pass a URL and a `RequestInit`-shaped object. You still get a `Response`
+under the hood. What you gain is a typed result, validated payloads, and a place to
+put the cross-cutting concerns that usually end up copy-pasted into every service file.
+
+<Callout title="Prior art">
+  Heavily inspired by [better-fetch](https://github.com/better-auth/better-fetch) 🙌🏻
+</Callout>
+
+## Why it exists
+
+Most `fetch` wrappers make one of two trades: they throw on non-2xx and force you into
+`try/catch`, or they hand back `any` and let the type system lie about what came over the wire.
+
+`okfetch` refuses both.
+
+### Failures are values, not exceptions
+
+Every call resolves to a [`Result`](https://github.com/dmmulroy/better-result). A 404, a
+timeout, a schema mismatch — none of them throw. They arrive as tagged errors you have to
+handle before you can touch the data.
+
+```ts
+const result = await okfetch("https://api.example.com/users/1", {
+  outputSchema: userSchema,
+});
+
+// `result.value` is not reachable until you have narrowed the failure away
+if (result.isErr()) {
+  return fallbackUser();
+}
+
+result.value.email; // string, and it really is a string
+```
+
+### The wire is validated, not assumed
+
+`fetch().then(r => r.json())` returns `any`. Every type annotation past that point is a
+guess. `okfetch` runs the payload through a schema first, so a backend that silently
+renames a field fails at the boundary instead of three layers deep in your business logic.
+
+Any [Standard Schema v1](https://standardschema.dev) library works — `zod`, `valibot`,
+`arktype`, and friends — because okfetch never imports a validator itself.
+
+### Cross-cutting concerns are plugins
+
+Logging, tracing, auth refresh, request IDs, metrics: all of it hangs off six lifecycle
+hooks instead of another layer of wrapper functions.
+
+```ts
+await okfetch("/orders", {
+  baseURL,
+  plugins: [logger(), otel(), retryBudget()],
+});
+```
+
+## The packages
+
+<Cards>
+  <Card
+    title="@okfetch/fetch"
+    href="/docs/fetch"
+    description="The transport core: validation, retries, timeouts, auth, streaming, plugins."
+  />
+  <Card
+    title="@okfetch/api"
+    href="/docs/api"
+    description="Endpoint trees that compile into a fully typed client."
+  />
+  <Card
+    title="@okfetch/logger"
+    href="/docs/logger"
+    description="A pino plugin for request, success, failure, and retry logging."
+  />
+  <Card
+    title="@okfetch/otel"
+    href="/docs/otel"
+    description="One OpenTelemetry CLIENT span per request, with redaction built in."
+  />
+</Cards>
+
+### How they fit together
+
+`@okfetch/fetch` is the only package that talks to the network. `@okfetch/api` composes it,
+turning endpoint definitions into typed methods and adding request-side validation.
+`@okfetch/logger` and `@okfetch/otel` are plain plugins — nothing they do is privileged,
+and you could write either of them yourself against the public `OkfetchPlugin` interface.
+
+```text
+  @okfetch/api            @okfetch/logger   @okfetch/otel
+  (typed endpoints)             |                 |
+         |                      +-- plugins ------+
+         | composes                     |
+         v                              v
+              @okfetch/fetch  (transport core)
+                          |
+                          v
+                    global fetch()
+```
+
+### Which one do I start with?
+
+| You are…                                             | Start with        |
+| ---------------------------------------------------- | ----------------- |
+| making a handful of requests, or building your own abstraction | `@okfetch/fetch`  |
+| calling the same API from many places                | `@okfetch/api`    |
+| already using one of the above and want logs         | `@okfetch/logger` |
+| already using one of the above and want traces       | `@okfetch/otel`   |
+
+## Install
+
+Every package expects `better-result` alongside it, since that is the `Result` type you get back.
+
+<Tabs items={["bun", "npm", "pnpm"]}>
+  <Tab value="bun">
+
+```bash
+bun add @okfetch/fetch better-result
+```
+
+  </Tab>
+  <Tab value="npm">
+
+```bash
+npm install @okfetch/fetch better-result
+```
+
+  </Tab>
+  <Tab value="pnpm">
+
+```bash
+pnpm add @okfetch/fetch better-result
+```
+
+  </Tab>
+</Tabs>
+
+The packages ship their own declarations and pin no TypeScript version. Published types are
+tested against TypeScript 5.4 and newer.
+
+## Five minutes with okfetch
+
+<Steps>
+
+<Step>
+
+### Describe what you expect back
+
+```ts
+import { z } from "zod/v4";
+
+const todoSchema = z.object({
+  completed: z.boolean(),
+  id: z.number(),
+  title: z.string(),
+  userId: z.number(),
+});
+```
+
+</Step>
+
+<Step>
+
+### Make the request
+
+```ts
+import { okfetch } from "@okfetch/fetch";
+
+const result = await okfetch("https://jsonplaceholder.typicode.com/todos/1", {
+  outputSchema: todoSchema,
+});
+```
+
+</Step>
+
+<Step>
+
+### Handle both branches
+
+```ts
+result.match({
+  ok: (todo) => console.log(todo.title),
+  err: (error) => console.error(error._tag, error.message),
+});
+```
+
+`error._tag` is one of `FetchError`, `TimeoutError`, `ApiError`, `ParseError`,
+`ValidationError`, or `PluginError` — see the [error model](/docs/fetch#error-model).
+
+</Step>
+
+</Steps>
+
+## Core concepts, once
+
+These behaviours are shared by every package, so they are documented here and not repeated
+on each page.
+
+### Serialization rules
+
+`query` values, path `params`, and `application/x-www-form-urlencoded` bodies all follow the
+same three rules:
+
+- `undefined` keys are **omitted entirely**
+- array values **repeat the key**, skipping `undefined` items
+- `null` is **not** absent — it serializes to the literal string `"null"`
+
+Dropping `undefined` is what makes conditional spreads safe:
+
+```ts
+const cursor = page > 1 ? lastCursor : undefined;
+
+// No `cursor` parameter at all on page 1 — not `cursor=undefined`.
+await okfetch("/browse", { baseURL, query: { cursor, limit: 20 } });
+```
+
+### Validation boundaries
+
+There are five places a schema can run. `ValidationError.type` tells you which one failed:
+
+| `type`     | Runs on                        | Configured by                       |
+| ---------- | ------------------------------ | ----------------------------------- |
+| `"body"`   | request body, before sending   | `@okfetch/api` endpoint `body`      |
+| `"params"` | path params, before sending    | `@okfetch/api` endpoint `params`    |
+| `"query"`  | query string, before sending   | `@okfetch/api` endpoint `query`     |
+| `"output"` | successful response payload    | `outputSchema` / endpoint `output`  |
+| `"error"`  | error response payload         | `apiErrorDataSchema` / `errorSchema`|
+
+Request-side failures never reach the network, but they *do* reach plugin `onFail` hooks —
+so a validation bug still shows up in your logs and traces.
+
+### Standard Schema, not a validator
+
+okfetch has no favourite validation library. Anything implementing Standard Schema v1 slots in:
+
+```ts
+import * as v from "valibot";
+
+await okfetch("/me", {
+  baseURL,
+  outputSchema: v.object({ id: v.string(), email: v.string() }),
+});
+```
+
+## A runnable example
+
+The repo ships a small end-to-end script that wires all four packages together — a direct
+request, a generated client, and a deliberate validation failure:
+
+```bash
+bun run --cwd examples/app dev
+```
+
+Source: [`examples/app/index.ts`](https://github.com/aldotestino/okfetch/blob/main/examples/app/index.ts)

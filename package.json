@@ -3,23 +3,26 @@
   "private": true,
   "license": "MIT",
   "workspaces": [
+    "apps/*",
     "packages/*",
     "examples/*"
   ],
   "type": "module",
   "scripts": {
     "build": "tsdown",
-    "typecheck": "tsc --noEmit",
-    "typecheck:compat": "bun run build && bunx --package typescript@5.4.5 tsc --project tests/typescript-compat/tsconfig.json",
-    "test:types": "tstyche",
     "build:watch": "tsdown --watch",
     "changeset": "changeset",
-    "lint": "oxlint",
-    "lint:fix": "oxlint --fix",
+    "docs:build": "bun run --cwd apps/docs build",
+    "docs:dev": "bun run --cwd apps/docs dev",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
+    "lint": "oxlint --ignore-pattern \"apps/**\"",
+    "lint:fix": "oxlint --fix --ignore-pattern \"apps/**\"",
     "prepare": "husky",
     "release": "bun run build && changeset publish",
+    "test:types": "tstyche",
+    "typecheck": "tsc --noEmit",
+    "typecheck:compat": "bun run build && bunx --package typescript@5.4.5 tsc --project tests/typescript-compat/tsconfig.json",
     "version-packages": "changeset version && bun install"
   },
   "devDependencies": {
