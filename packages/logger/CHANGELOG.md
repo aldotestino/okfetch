@@ -1,5 +1,12 @@
 # @okfetch/logger
 
+## 0.5.0
+
+### Patch Changes
+
+- Updated dependencies [4e8e29c]
+  - @okfetch/fetch@0.5.0
+
 ## 0.4.2
 
 ### Patch Changes

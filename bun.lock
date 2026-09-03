@@ -59,9 +59,9 @@
     },
     "packages/api": {
       "name": "@okfetch/api",
-      "version": "0.4.2",
+      "version": "0.5.0",
       "dependencies": {
-        "@okfetch/fetch": "^0.4.2",
+        "@okfetch/fetch": "^0.5.0",
       },
       "devDependencies": {
         "@standard-schema/spec": "^1.1.0",
@@ -70,13 +70,13 @@
         "zod": "^4.5.4",
       },
       "peerDependencies": {
-        "@okfetch/fetch": "^0.4.2",
+        "@okfetch/fetch": "^0.5.0",
         "better-result": "^3.0.1",
       },
     },
     "packages/fetch": {
       "name": "@okfetch/fetch",
-      "version": "0.4.2",
+      "version": "0.5.0",
       "dependencies": {
         "@standard-schema/spec": "^1.1.0",
       },
@@ -91,24 +91,24 @@
     },
     "packages/logger": {
       "name": "@okfetch/logger",
-      "version": "0.4.2",
+      "version": "0.5.0",
       "dependencies": {
         "pino": "^10.3.1",
       },
       "devDependencies": {
-        "@okfetch/fetch": "^0.4.2",
+        "@okfetch/fetch": "^0.5.0",
         "@types/bun": "latest",
       },
       "peerDependencies": {
-        "@okfetch/fetch": "^0.4.2",
+        "@okfetch/fetch": "^0.5.0",
         "pino": "^10.3.1",
       },
     },
     "packages/otel": {
       "name": "@okfetch/otel",
-      "version": "0.1.0",
+      "version": "0.5.0",
       "devDependencies": {
-        "@okfetch/fetch": "^0.4.0",
+        "@okfetch/fetch": "^0.5.0",
         "@opentelemetry/api": "^1.9.0",
         "@opentelemetry/context-async-hooks": "^2.0.0",
         "@opentelemetry/core": "^2.0.0",
@@ -117,7 +117,7 @@
         "better-result": "^3.0.1",
       },
       "peerDependencies": {
-        "@okfetch/fetch": "^0.4.0",
+        "@okfetch/fetch": "^0.5.0",
         "@opentelemetry/api": "^1.9.0",
       },
     },
