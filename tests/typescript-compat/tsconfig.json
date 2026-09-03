@@ -7,7 +7,8 @@
     "paths": {
       "@okfetch/api": ["../../packages/api/dist/index.d.mts"],
       "@okfetch/fetch": ["../../packages/fetch/dist/index.d.mts"],
-      "@okfetch/logger": ["../../packages/logger/dist/index.d.mts"]
+      "@okfetch/logger": ["../../packages/logger/dist/index.d.mts"],
+      "@okfetch/otel": ["../../packages/otel/dist/index.d.mts"]
     },
     "skipLibCheck": true,
     "strict": true,

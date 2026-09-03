@@ -14,7 +14,8 @@
     "paths": {
       "@okfetch/api": ["./packages/api/src/index.ts"],
       "@okfetch/fetch": ["./packages/fetch/src/index.ts"],
-      "@okfetch/logger": ["./packages/logger/index.ts"]
+      "@okfetch/logger": ["./packages/logger/index.ts"],
+      "@okfetch/otel": ["./packages/otel/index.ts"]
     },
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,

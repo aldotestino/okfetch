@@ -214,6 +214,8 @@ Available lifecycle hooks:
 - `onFail`
 - `onRetry`
 
+`onFail` runs for every failure after the request context is built: transport, timeout, API, parse and validation errors, plus errors thrown by `onRequest` or `onResponse` hooks and failures reading the response body. `init` failures happen before a request context exists and are returned without calling `onFail`.
+
 ### Streaming
 
 Set `stream: true` to receive a `ReadableStream`.

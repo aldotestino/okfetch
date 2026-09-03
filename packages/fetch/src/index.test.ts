@@ -6,7 +6,12 @@ import type { Result } from "better-result";
 import { z } from "zod/v4";
 
 import { ValidationError } from "./errors";
-import type { OkfetchError, OkfetchFetch, OkfetchPlugin } from "./index";
+import type {
+  OkfetchError,
+  OkfetchFetch,
+  OkfetchPlugin,
+  OkfetchRequestContext,
+} from "./index";
 import { okfetch, validateSchema } from "./index";
 import { validateAllErrors, validateClientErrors } from "./presets";
 import { buildRequestContext } from "./request-context";
@@ -67,6 +72,16 @@ const collectStreamChunks = async <T>(
   }
 
   return chunks;
+};
+
+const getRejection = async (promise: Promise<unknown>): Promise<unknown> => {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+
+  throw new Error("Expected promise to reject");
 };
 
 const createValidatorPlugin = (schemas: {
@@ -359,6 +374,9 @@ describe("okfetch v2 plugins", () => {
     });
 
     expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error.message).toBe("network down");
+    }
     expect(events).toEqual(["fail:true:FetchError"]);
   });
 
@@ -642,7 +660,8 @@ describe("okfetch v2 plugins", () => {
       const reader = result.value.getReader();
       const firstChunk = await reader.read();
       expect(firstChunk.value).toEqual({ id: 1 });
-      await expect(reader.read()).rejects.toMatchObject({
+      const error = await getRejection(reader.read());
+      expect(error).toMatchObject({
         _tag: "ValidationError",
         type: "output",
       });
@@ -1241,7 +1260,7 @@ describe("retry helpers", () => {
   });
 
   test("sleep resolves asynchronously", async () => {
-    await expect(sleep(0)).resolves.toBeUndefined();
+    expect(await sleep(0)).toBeUndefined();
   });
 });
 
@@ -1265,7 +1284,7 @@ describe("stream helpers", () => {
       })
     );
 
-    await expect(collectStreamChunks(parsed)).resolves.toEqual([{ id: 1 }]);
+    expect(await collectStreamChunks(parsed)).toEqual([{ id: 1 }]);
   });
 
   test("surfaces parse errors for invalid json stream chunks", async () => {
@@ -1285,7 +1304,8 @@ describe("stream helpers", () => {
     );
     const reader = parsed.getReader();
 
-    await expect(reader.read()).rejects.toMatchObject({
+    const error = await getRejection(reader.read());
+    expect(error).toMatchObject({
       _tag: "ParseError",
     });
     reader.releaseLock();
@@ -1308,7 +1328,8 @@ describe("stream helpers", () => {
     );
     const reader = parsed.getReader();
 
-    await expect(reader.read()).rejects.toMatchObject({
+    const error = await getRejection(reader.read());
+    expect(error).toMatchObject({
       _tag: "ValidationError",
       type: "output",
     });
@@ -1406,6 +1427,105 @@ describe("okfetch edge cases", () => {
         pluginName: "broken-response",
       });
     }
+  });
+
+  test("onFail receives the context produced before a later onRequest hook throws", async () => {
+    let failContext: OkfetchRequestContext | undefined;
+    const stateful: OkfetchPlugin = {
+      name: "stateful",
+      version: "1.0.0",
+      hooks: {
+        onRequest: (context) => {
+          const headers = new Headers(context.headers);
+          headers.set("x-stateful", "attached");
+          return { ...context, headers };
+        },
+        onFail: (context) => {
+          failContext = context;
+        },
+      },
+    };
+
+    const result = await okfetch("https://example.com", {
+      fetch: createMockFetch(() => Response.json({ ok: true })),
+      plugins: [
+        stateful,
+        {
+          name: "broken-request",
+          version: "1.0.0",
+          hooks: {
+            onRequest: () => {
+              throw new Error("boom");
+            },
+          },
+        },
+      ],
+    });
+
+    expect(result.isErr()).toBe(true);
+    expect(failContext?.headers.get("x-stateful")).toBe("attached");
+  });
+
+  test("onFail fires when mutating hooks or the body read fail", async () => {
+    const events: string[] = [];
+    const observer: OkfetchPlugin = {
+      name: "observer",
+      version: "1.0.0",
+      hooks: {
+        onFail: (_context, response, error) => {
+          events.push(`fail:${response?.status ?? "none"}:${error._tag}`);
+        },
+      },
+    };
+
+    await okfetch("https://example.com", {
+      fetch: createMockFetch(() => Response.json({ ok: true })),
+      plugins: [
+        observer,
+        {
+          name: "broken-request",
+          version: "1.0.0",
+          hooks: {
+            onRequest: () => {
+              throw new Error("boom");
+            },
+          },
+        },
+      ],
+    });
+
+    await okfetch("https://example.com", {
+      fetch: createMockFetch(() => Response.json({ ok: true })),
+      plugins: [
+        observer,
+        {
+          name: "broken-response",
+          version: "1.0.0",
+          hooks: {
+            onResponse: () => {
+              throw new Error("boom");
+            },
+          },
+        },
+      ],
+    });
+
+    const brokenBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("broken body"));
+      },
+    });
+    const bodyResult = await okfetch("https://example.com", {
+      fetch: createMockFetch(() => new Response(brokenBody, { status: 200 })),
+      plugins: [observer],
+    });
+
+    expect(bodyResult.isErr()).toBe(true);
+    expect(events).toEqual([
+      "fail:none:PluginError",
+      "fail:200:PluginError",
+      "fail:200:ParseError",
+    ]);
   });
 
   test("returns timeout and stream body parse failures", async () => {

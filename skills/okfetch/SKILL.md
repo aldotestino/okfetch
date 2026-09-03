@@ -1,6 +1,6 @@
 ---
 name: okfetch
-description: Use this skill when building with the okfetch library. It helps agents choose between @okfetch/fetch, @okfetch/api, and @okfetch/logger, and shows the expected Result-based and Zod-based usage patterns.
+description: Use this skill when building with the okfetch library. It helps agents choose between @okfetch/fetch, @okfetch/api, @okfetch/logger, and @okfetch/otel, and shows the expected Result-based and Zod-based usage patterns.
 ---
 
 # okfetch
@@ -14,6 +14,7 @@ Choose the package based on the job:
 - Use `@okfetch/fetch` for direct typed requests with validation, retries, plugins, auth, timeouts, and streaming.
 - Use `@okfetch/api` when the user wants a typed client generated from endpoint definitions.
 - Use `@okfetch/logger` when the user wants ready-made request logging through a plugin.
+- Use `@okfetch/otel` when the user wants OpenTelemetry tracing of requests through a plugin.
 
 If the user has repeated endpoint calls, shared request shapes, or wants one typed client object, prefer `@okfetch/api`.
 
@@ -28,6 +29,8 @@ The main usage pattern is:
 1. Define Zod schemas for request or response shapes.
 2. Call `okfetch(...)` directly or generate a client with `createApi(...)`.
 3. Handle the returned `Result` explicitly instead of relying on thrown request errors.
+
+The packages do not require consumers to install a specific TypeScript compiler. Published declarations are tested with TypeScript 5.4 and newer.
 
 ## Result handling
 
@@ -122,7 +125,7 @@ Endpoint definitions may include:
 - `requestOptions`
 - `stream`
 
-This package validates `body`, `params`, and `query` before sending the request, then delegates transport behavior to `@okfetch/fetch`.
+This package validates `body`, `params`, and `query` before sending the request, then delegates transport behavior to `@okfetch/fetch`. Input validation failures run plugin `onFail` hooks without sending a network request, so logger and tracing plugins observe them.
 
 Prefer this shape in examples:
 
@@ -226,6 +229,39 @@ The logger plugin covers these lifecycle moments:
 - success
 - failure
 - retry
+
+## `@okfetch/otel`
+
+Use `otel()` from `@okfetch/otel` as a plugin for OpenTelemetry tracing. It requires `@opentelemetry/api` and an OpenTelemetry SDK registered as the global tracer provider.
+
+Prefer this shape in examples:
+
+```ts
+import { okfetch } from "@okfetch/fetch";
+import { otel } from "@okfetch/otel";
+
+await okfetch("https://api.example.com/todos/:id", {
+  params: { id: 1 },
+  plugins: [otel()],
+});
+```
+
+Key behavior to explain when relevant:
+
+- one `CLIENT` span per request, covering every retry attempt
+- records method, URL, path, query, and response status; never records body contents
+- captures selected request/response headers and observable body sizes only when explicitly enabled
+- redacts sensitive headers and query parameters by name (such as `authorization` and `token`) and by value (JWTs and `Bearer`/`Basic` credentials under any name)
+- records standards-compliant error types and status codes when the request fails
+- injects `traceparent` into the outgoing request by default
+
+Main options: `tracer`, `captureRequestHeaders`, `captureResponseHeaders`, `captureBodySizes`, `knownMethods`, `propagateTraceContext`, and `redact` (`{ headers?, queryParams?, values? }`, where an array replaces the default list and a function such as `(defaults) => [...defaults, "x-tenant"]` extends it).
+
+## Plugin authoring
+
+Use the public `OkfetchPlugin`, `OkfetchPluginInitInput`, and `OkfetchRequestContext` types from `@okfetch/fetch` when writing a custom plugin.
+
+Lifecycle hooks are `init`, `onRequest`, `onResponse`, `onSuccess`, `onFail`, and `onRetry`. `onFail` runs for every failure after the request context exists, including transport, timeout, API, parse, validation, `onRequest`, `onResponse`, and response body-read failures. It does not run for `init` failures. If an `onRequest` hook fails, `onFail` receives the context last returned by the preceding hook.
 
 ## Streaming
 

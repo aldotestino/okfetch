@@ -1,7 +1,16 @@
 import { createApi, createEndpoints } from "@okfetch/api";
 import { okfetch } from "@okfetch/fetch";
 import { logger } from "@okfetch/logger";
+import { otel } from "@okfetch/otel";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { NodeSDK } from "@opentelemetry/sdk-node";
 import { z } from "zod/v4";
+
+const telemetry = new NodeSDK({
+  serviceName: "okfetch-example",
+  traceExporter: new OTLPTraceExporter(),
+});
+telemetry.start();
 
 const formatIssuePath = (
   path: readonly (PropertyKey | { key: PropertyKey })[] | undefined
@@ -47,7 +56,7 @@ const api = createApi({
   headers: {
     "x-demo": "okfetch-example",
   },
-  plugins: [logger()],
+  plugins: [logger(), otel()],
   errorSchema: z.object({
     message: z.string(),
   }),
@@ -59,6 +68,7 @@ const directTodo = await okfetch(
   "https://jsonplaceholder.typicode.com/todos/1",
   {
     outputSchema: todoSchema,
+    plugins: [otel()],
   }
 );
 
@@ -93,3 +103,5 @@ if (invalidTodo.isErr() && invalidTodo.error._tag === "ValidationError") {
     console.log(`  ${formatIssuePath(issue.path)}: ${issue.message}`);
   }
 }
+
+await telemetry.shutdown();

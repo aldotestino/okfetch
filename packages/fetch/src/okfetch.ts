@@ -101,7 +101,7 @@ const fetchResponse = async (
 
       return new FetchError({
         cause: error,
-        message: "Fetch request failed",
+        message: Error.isError(error) ? error.message : "Fetch request failed",
       });
     },
     try: () => (options.fetch ?? globalThis.fetch)(url, fetchInit),
@@ -256,10 +256,15 @@ const executeAttempt = async <TRes, TErr, Options extends OkfetchOptions>(
 ): Promise<AttemptResult<TRes, TErr, Options>> => {
   const requestResult = await runOnRequest(plugins, { ...state.context });
   if (requestResult.isErr()) {
-    return {
-      result: Result.err(requestResult.error as OkfetchError<TErr>),
-      shouldContinue: false,
-    };
+    // Hand onFail the context produced by the hooks that ran before the
+    // failing one, so stateful plugins can find what they attached to it.
+    state.context = requestResult.error.context;
+    return failRequest(
+      plugins,
+      state.context,
+      undefined,
+      requestResult.error.error as OkfetchError<TErr>
+    );
   }
 
   state.context = requestResult.value;
@@ -279,10 +284,12 @@ const executeAttempt = async <TRes, TErr, Options extends OkfetchOptions>(
     responseResult.value
   );
   if (hookResponseResult.isErr()) {
-    return {
-      result: Result.err(hookResponseResult.error as OkfetchError<TErr>),
-      shouldContinue: false,
-    };
+    return failRequest(
+      plugins,
+      state.context,
+      responseResult.value,
+      hookResponseResult.error as OkfetchError<TErr>
+    );
   }
 
   const response = hookResponseResult.value;
@@ -291,10 +298,7 @@ const executeAttempt = async <TRes, TErr, Options extends OkfetchOptions>(
     options.stream === true
   );
   if (textResult.isErr()) {
-    return {
-      result: Result.err(textResult.error),
-      shouldContinue: false,
-    };
+    return failRequest(plugins, state.context, response, textResult.error);
   }
 
   if (!response.ok) {
