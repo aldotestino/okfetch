@@ -420,6 +420,105 @@ describe("okfetch client package", () => {
     }
   });
 
+  test("per-call validateOutput overrides the client default in both directions", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ id: "unexpected-string" })
+    );
+    const endpoints = createEndpoints({
+      user: {
+        method: "GET",
+        output: z.object({ id: z.number() }),
+        path: "/user",
+      },
+    });
+
+    const validating = createApi({
+      baseURL: "https://api.example.com",
+      endpoints,
+      fetch: mockFetch,
+    });
+    const relaxed = await validating.user({ validateOutput: false });
+    expect(relaxed.isOk()).toBe(true);
+    if (relaxed.isOk()) {
+      expect(relaxed.value as unknown).toEqual({ id: "unexpected-string" });
+    }
+
+    const lenient = createApi({
+      baseURL: "https://api.example.com",
+      endpoints,
+      fetch: mockFetch,
+      validateOutput: false,
+    });
+    const strict = await lenient.user({ validateOutput: true });
+    expect(strict.isErr()).toBe(true);
+    if (strict.isErr()) {
+      expect(strict.error._tag).toBe("ValidationError");
+    }
+  });
+
+  test("per-call shouldValidateError overrides the client default in both directions", async () => {
+    // a body the schema accepts and transforms, so validated and skipped
+    // paths hand over different data rather than the same raw fallback.
+    const mockFetch = createMockFetch(() =>
+      Response.json({ message: "unauthorized" }, { status: 401 })
+    );
+    const endpoints = createEndpoints({
+      me: {
+        method: "GET",
+        path: "/me",
+      },
+    });
+    const errorSchema = z.object({
+      message: z.string().transform((message) => message.toUpperCase()),
+    });
+    const errorDataOf = (
+      result: Awaited<
+        ReturnType<
+          ReturnType<
+            typeof createApi<typeof endpoints, { message: string }>
+          >["me"]
+        >
+      >
+    ) => {
+      if (result.isErr() && result.error._tag === "ApiError") {
+        return result.error.data as unknown;
+      }
+      throw new Error("expected an ApiError");
+    };
+
+    const validating = createApi({
+      baseURL: "https://api.example.com",
+      endpoints,
+      errorSchema,
+      fetch: mockFetch,
+      shouldValidateError: () => true,
+    });
+    expect(errorDataOf(await validating.me())).toEqual({
+      message: "UNAUTHORIZED",
+    });
+    expect(
+      errorDataOf(await validating.me({ shouldValidateError: () => false }))
+    ).toEqual({
+      message: "unauthorized",
+    });
+
+    const lenient = createApi({
+      baseURL: "https://api.example.com",
+      endpoints,
+      errorSchema,
+      fetch: mockFetch,
+      shouldValidateError: () => false,
+    });
+    expect(errorDataOf(await lenient.me())).toEqual({
+      message: "unauthorized",
+    });
+    expect(
+      errorDataOf(await lenient.me({ shouldValidateError: () => true }))
+    ).toEqual({
+      message: "UNAUTHORIZED",
+    });
+  });
+
   test("shouldValidateError opt-out still parses global error schema data", async () => {
     const mockFetch = createMockFetch(() =>
       Response.json({ message: 42 }, { status: 401 })
