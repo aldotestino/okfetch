@@ -456,32 +456,67 @@ describe("okfetch client package", () => {
     }
   });
 
-  test("per-call shouldValidateError overrides the client default", async () => {
+  test("per-call shouldValidateError overrides the client default in both directions", async () => {
+    // a body the schema accepts and transforms, so validated and skipped
+    // paths hand over different data rather than the same raw fallback.
     const mockFetch = createMockFetch(() =>
-      Response.json({ message: 42 }, { status: 401 })
+      Response.json({ message: "unauthorized" }, { status: 401 })
     );
+    const endpoints = createEndpoints({
+      me: {
+        method: "GET",
+        path: "/me",
+      },
+    });
+    const errorSchema = z.object({
+      message: z.string().transform((message) => message.toUpperCase()),
+    });
+    const errorDataOf = (
+      result: Awaited<
+        ReturnType<
+          ReturnType<
+            typeof createApi<typeof endpoints, { message: string }>
+          >["me"]
+        >
+      >
+    ) => {
+      if (result.isErr() && result.error._tag === "ApiError") {
+        return result.error.data as unknown;
+      }
+      throw new Error("expected an ApiError");
+    };
 
-    const api = createApi({
+    const validating = createApi({
       baseURL: "https://api.example.com",
-      endpoints: createEndpoints({
-        me: {
-          method: "GET",
-          path: "/me",
-        },
-      }),
-      errorSchema: z.object({ message: z.string() }),
+      endpoints,
+      errorSchema,
       fetch: mockFetch,
       shouldValidateError: () => true,
     });
+    expect(errorDataOf(await validating.me())).toEqual({
+      message: "UNAUTHORIZED",
+    });
+    expect(
+      errorDataOf(await validating.me({ shouldValidateError: () => false }))
+    ).toEqual({
+      message: "unauthorized",
+    });
 
-    const result = await api.me({ shouldValidateError: () => false });
-    expect(result.isErr()).toBe(true);
-    if (result.isErr() && result.error._tag === "ApiError") {
-      // not validated, so the parsed body is handed over as it came.
-      expect(result.error.data as unknown).toEqual({ message: 42 });
-    } else {
-      throw new Error("expected an ApiError");
-    }
+    const lenient = createApi({
+      baseURL: "https://api.example.com",
+      endpoints,
+      errorSchema,
+      fetch: mockFetch,
+      shouldValidateError: () => false,
+    });
+    expect(errorDataOf(await lenient.me())).toEqual({
+      message: "unauthorized",
+    });
+    expect(
+      errorDataOf(await lenient.me({ shouldValidateError: () => true }))
+    ).toEqual({
+      message: "UNAUTHORIZED",
+    });
   });
 
   test("shouldValidateError opt-out still parses global error schema data", async () => {
