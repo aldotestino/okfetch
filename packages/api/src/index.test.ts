@@ -420,6 +420,70 @@ describe("okfetch client package", () => {
     }
   });
 
+  test("per-call validateOutput overrides the client default in both directions", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ id: "unexpected-string" })
+    );
+    const endpoints = createEndpoints({
+      user: {
+        method: "GET",
+        output: z.object({ id: z.number() }),
+        path: "/user",
+      },
+    });
+
+    const validating = createApi({
+      baseURL: "https://api.example.com",
+      endpoints,
+      fetch: mockFetch,
+    });
+    const relaxed = await validating.user({ validateOutput: false });
+    expect(relaxed.isOk()).toBe(true);
+    if (relaxed.isOk()) {
+      expect(relaxed.value as unknown).toEqual({ id: "unexpected-string" });
+    }
+
+    const lenient = createApi({
+      baseURL: "https://api.example.com",
+      endpoints,
+      fetch: mockFetch,
+      validateOutput: false,
+    });
+    const strict = await lenient.user({ validateOutput: true });
+    expect(strict.isErr()).toBe(true);
+    if (strict.isErr()) {
+      expect(strict.error._tag).toBe("ValidationError");
+    }
+  });
+
+  test("per-call shouldValidateError overrides the client default", async () => {
+    const mockFetch = createMockFetch(() =>
+      Response.json({ message: 42 }, { status: 401 })
+    );
+
+    const api = createApi({
+      baseURL: "https://api.example.com",
+      endpoints: createEndpoints({
+        me: {
+          method: "GET",
+          path: "/me",
+        },
+      }),
+      errorSchema: z.object({ message: z.string() }),
+      fetch: mockFetch,
+      shouldValidateError: () => true,
+    });
+
+    const result = await api.me({ shouldValidateError: () => false });
+    expect(result.isErr()).toBe(true);
+    if (result.isErr() && result.error._tag === "ApiError") {
+      // not validated, so the parsed body is handed over as it came.
+      expect(result.error.data as unknown).toEqual({ message: 42 });
+    } else {
+      throw new Error("expected an ApiError");
+    }
+  });
+
   test("shouldValidateError opt-out still parses global error schema data", async () => {
     const mockFetch = createMockFetch(() =>
       Response.json({ message: 42 }, { status: 401 })

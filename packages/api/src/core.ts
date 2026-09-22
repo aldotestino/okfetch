@@ -152,9 +152,12 @@ const buildEndpointFn = <TEndpoint extends EndpointDefinition, TGlobalError>(
         ...(overridePlugins ?? []),
       ],
       query: payload.query,
-      shouldValidateError,
+      // both are typed as per-call overrides; the call decides when it says
+      // something and the client default applies otherwise.
+      shouldValidateError:
+        overrideRest.shouldValidateError ?? shouldValidateError,
       stream: endpoint.stream,
-      validateOutput,
+      validateOutput: overrideRest.validateOutput ?? validateOutput,
     };
 
     return okfetch(endpoint.path, options);
