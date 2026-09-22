@@ -1,5 +1,12 @@
 # @okfetch/api
 
+## 0.6.1
+
+### Patch Changes
+
+- 6fc4995: Honor per-call `validateOutput` and `shouldValidateError` overrides in `@okfetch/api`. Both are typed as request overrides, but the endpoint builder wrote the client-level value after spreading the overrides, so a call could never change them.
+- @okfetch/fetch@0.6.1
+
 ## 0.6.0
 
 ### Minor Changes
