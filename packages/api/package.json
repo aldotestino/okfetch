@@ -44,7 +44,7 @@
     "@standard-schema/spec": "^1.1.0",
     "@types/bun": "latest",
     "better-result": "^3.0.1",
-    "zod": "^4.5.4"
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "@okfetch/fetch": "^0.6.1",
