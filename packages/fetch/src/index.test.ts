@@ -1360,6 +1360,33 @@ describe("stream helpers", () => {
     expect(await collectStreamChunks(parsed)).toEqual([{ id: 1 }]);
   });
 
+  test("emits every message when one read carries several", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"id":1}\n\ndata: {"id":2}\n\ndata: {"id":3}\n\n'
+          )
+        );
+        controller.close();
+      },
+    });
+
+    const parsed = createParsedStream<{ id: number }>(
+      stream,
+      z.object({
+        id: z.number(),
+      })
+    );
+
+    expect(await collectStreamChunks(parsed)).toEqual([
+      { id: 1 },
+      { id: 2 },
+      { id: 3 },
+    ]);
+  });
+
   test("surfaces parse errors for invalid json stream chunks", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

@@ -58,6 +58,37 @@ const processStreamChunk = (
   });
 };
 
+// Enqueues every `data:` line among `lines`, in order. Returns how many it
+// enqueued, or null after erroring the stream on a chunk that failed.
+const enqueueDataLines = async <TRes>(
+  lines: string[],
+  controller: ReadableStreamDefaultController<TRes>,
+  outputSchema?: StandardSchemaV1,
+  validateOutput = true
+): Promise<number | null> => {
+  let enqueued = 0;
+  for (const line of lines) {
+    const dataContent = extractDataLine(line);
+    if (dataContent === null) {
+      continue;
+    }
+
+    const parsedChunk = await processStreamChunk(
+      dataContent,
+      outputSchema,
+      validateOutput
+    );
+    if (parsedChunk.isErr()) {
+      controller.error(parsedChunk.error);
+      return null;
+    }
+
+    controller.enqueue(parsedChunk.value as TRes);
+    enqueued += 1;
+  }
+  return enqueued;
+};
+
 export const createParsedStream = <TRes>(
   responseBody: ReadableStream<Uint8Array>,
   outputSchema?: StandardSchemaV1,
@@ -76,29 +107,15 @@ export const createParsedStream = <TRes>(
         const { done, value } = await reader.read();
 
         if (done) {
-          if (buffer.trim()) {
-            const lines = buffer.split("\n");
-            for (const line of lines) {
-              const dataContent = extractDataLine(line);
-              if (dataContent === null) {
-                continue;
-              }
-
-              const parsedChunk = await processStreamChunk(
-                dataContent,
-                outputSchema,
-                validateOutput
-              );
-              if (parsedChunk.isErr()) {
-                controller.error(parsedChunk.error);
-                return;
-              }
-
-              controller.enqueue(parsedChunk.value as TRes);
-            }
+          const flushed = await enqueueDataLines(
+            buffer.split("\n"),
+            controller,
+            outputSchema,
+            validateOutput
+          );
+          if (flushed !== null) {
+            controller.close();
           }
-
-          controller.close();
           return;
         }
 
@@ -106,23 +123,15 @@ export const createParsedStream = <TRes>(
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
 
-        for (const line of lines) {
-          const dataContent = extractDataLine(line);
-          if (dataContent === null) {
-            continue;
-          }
-
-          const parsedChunk = await processStreamChunk(
-            dataContent,
-            outputSchema,
-            validateOutput
-          );
-          if (parsedChunk.isErr()) {
-            controller.error(parsedChunk.error);
-            return;
-          }
-
-          controller.enqueue(parsedChunk.value as TRes);
+        // Every complete line of this read is handled before pull() yields:
+        // they are no longer in `buffer`, so any left unhandled would be lost.
+        const enqueued = await enqueueDataLines(
+          lines,
+          controller,
+          outputSchema,
+          validateOutput
+        );
+        if (enqueued !== 0) {
           return;
         }
       }
