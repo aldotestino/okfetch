@@ -1,5 +1,11 @@
 # @okfetch/fetch
 
+## 0.6.2
+
+### Patch Changes
+
+- a1cc067: Emit every SSE message when one network read carries several. The stream parser returned after enqueuing the first `data:` line of a read, and the remaining complete lines of that read were already out of the buffer, so they were dropped.
+
 ## 0.6.1
 
 ## 0.6.0
