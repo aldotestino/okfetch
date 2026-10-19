@@ -12,12 +12,12 @@
     "@okfetch/fetch": "workspace:*",
     "@okfetch/logger": "workspace:*",
     "@okfetch/otel": "workspace:*",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
-    "@opentelemetry/sdk-node": "^0.222.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
+    "@opentelemetry/sdk-node": "^0.223.0",
     "better-result": "^3.0.1",
-    "zod": "^4.5.4"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
-    "@types/bun": "1.4.0"
+    "@types/bun": "1.4.3"
   }
 }
